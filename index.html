@@ -136,12 +136,17 @@
                 const userMessageDiv = document.getElementById(userMessageId);
                 if (userMessageDiv) {
                     userMessageDiv.insertAdjacentHTML('afterend', messageHtml);
+                    setTimeout(() => { // 延遲執行
+                        chatLog.scrollTop = chatLog.scrollHeight;
+                    }, 0);
                     return;
                 }
             }
 
             chatLog.innerHTML += messageHtml;
-            chatLog.scrollTop = chatLog.scrollHeight;
+            setTimeout(() => { // 延遲執行
+                chatLog.scrollTop = chatLog.scrollHeight;
+            }, 0);
         }
 
         // 開始編輯
@@ -180,7 +185,7 @@
             if (newContent && newContent !== messages[id].content) {
                 messages[id].content = newContent; //更新messages
                 if (messages[id].aiResponse) {
-                      // 刪除先前的AI回覆
+                     // 刪除先前的AI回覆
                     let nextSibling = document.getElementById(id).nextElementSibling;
                     while(nextSibling && nextSibling.classList.contains('message-ai')) {
                         const temp = nextSibling.nextElementSibling;
@@ -238,6 +243,9 @@
                 });
             });
         }
+    </script>
+</body>
+</html>
     </script>
 </body>
 </html>
