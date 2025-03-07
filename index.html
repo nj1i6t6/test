@@ -6,6 +6,7 @@
     <title>Grok-2 Chat</title>
     <link rel="manifest" href="manifest.json">
     <style>
+        /* ... (CSS 樣式保持不變) ... */
         body { font-family: sans-serif; margin: 0; padding: 0; }
         .chat-container { width: 80%; margin: 20px auto; border: 1px solid #ccc; border-radius: 5px; padding: 10px; overflow-y: auto; max-height: 500px; }
         .message { padding: 8px; margin-bottom: 15px; border-radius: 5px; position: relative; }
@@ -78,15 +79,17 @@
         let isDarkMode = false;
         let messageId = 0;
         let messages = {};
-        let currentlyEditing = null; // 追蹤目前正在編輯的訊息 ID
+        let currentlyEditing = null;
 
         function connectGrok() {
             apiKey = document.getElementById("apiKey").value;
             loadingIndicator.style.display = "block";
-            fetch(apiUrl, { method: "POST", headers: { "Content-Type": "application/json", "Authorization": `Bearer ${apiKey}` }, body: JSON.stringify({ "messages": [{ "role": "system", "content": "You are a test assistant." }, { "role": "user", "content": "Testing connection. Just say hi." }], "model": "grok-2-latest", "stream": false, "temperature": 0 }) })
+            // 初始系統訊息，可以放在這裡或 sendToAPI 中
+            fetch(apiUrl, { method: "POST", headers: { "Content-Type": "application/json", "Authorization": `Bearer ${apiKey}` }, body: JSON.stringify({ "messages": [{ "role": "system", "content": "You are a helpful assistant." }], "model": "grok-2-latest", "stream": false, "temperature": 0 }) })  //調整了這裡
             .then(response => { loadingIndicator.style.display = "none"; if (response.ok) { apiSetup.style.display = "none"; chatInterface.style.display = "block"; } else { connectionStatus.textContent = "連接失敗，請確認 API 金鑰後重試。"; } })
             .catch(error => { loadingIndicator.style.display = "none"; connectionStatus.textContent = "連接失敗，請確認 API 金鑰後重試。"; });
         }
+
 
         function sendMessage() {
             const message = userInput.value;
@@ -94,23 +97,53 @@
             userInput.value = "";
             const timestamp = new Date().toLocaleTimeString();
             const id = `user-${messageId++}`;
-            messages[id] = { content: message, timestamp: timestamp };
+            messages[id] = { content: message, timestamp: timestamp, role: "user" }; // 加入 role
             appendMessage(id, 'message-user', message, timestamp, true);
-            sendToAPI(message, id);
+            sendToAPI(id); // 傳遞訊息 ID
         }
 
-        function sendToAPI(message, id) {
+        function sendToAPI(userMessageId) {
             loadingIndicator.style.display = "block";
-            fetch(apiUrl, { method: "POST", headers: { "Content-Type": "application/json", "Authorization": `Bearer ${apiKey}` }, body: JSON.stringify({ "messages": [{ "role": "user", "content": message }], "model": "grok-2-latest", "stream": false, "temperature": 0 }) })
-            .then(response => response.json()).then(data => {
+
+            // 建立對話歷史
+            let chatHistory = [];
+            for (let key in messages) {
+                if (messages.hasOwnProperty(key)) { //確保只處理messages自身的屬性
+                    const msg = messages[key];
+                    chatHistory.push({ role: msg.role, content: msg.content }); // 使用 role
+                    if (msg.aiResponse) {
+                      chatHistory.push({ role: "assistant", content: msg.aiResponse.content }); // 使用 role
+                  }
+                }
+
+            }
+
+            fetch(apiUrl, {
+                method: "POST",
+                headers: { "Content-Type": "application/json", "Authorization": `Bearer ${apiKey}` },
+                body: JSON.stringify({
+                    "messages": chatHistory, // 傳送整個對話歷史
+                    "model": "grok-2-latest",
+                    "stream": false,
+                    "temperature": 0
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
                 loadingIndicator.style.display = "none";
                 const responseText = data.choices[0].message.content;
                 const aiTimestamp = new Date().toLocaleTimeString();
-                messages[id].aiResponse = { content: responseText, timestamp: aiTimestamp };
-                appendMessage(null, 'message-ai', responseText, aiTimestamp, false, id);
-            }).catch(error => { loadingIndicator.style.display = "none"; appendMessage(null, 'message-ai', `錯誤: ${error}`); });
-        }
 
+                // 更新 messages 物件
+                messages[userMessageId].aiResponse = { content: responseText, timestamp: aiTimestamp, role: "assistant" }; // 加入 role
+                appendMessage(null, 'message-ai', responseText, aiTimestamp, false, userMessageId);
+
+            })
+            .catch(error => {
+                loadingIndicator.style.display = "none";
+                appendMessage(null, 'message-ai', `錯誤: ${error}`);
+            });
+        }
         function appendMessage(id, className, content, timestamp, showActions, userMessageId = null) {
             let buttonsHtml = '';
             if (className === 'message-user') {
@@ -149,7 +182,7 @@
             }, 0);
         }
 
-        // 開始編輯
+                // 開始編輯
         function editMessage(id) {
             if (currentlyEditing) return; // 如果已經在編輯其他訊息，則不執行任何操作
             currentlyEditing = id;
@@ -194,7 +227,7 @@
                     }
                     delete messages[id].aiResponse;
                 }
-                sendToAPI(newContent, id); // 重新發送
+                sendToAPI(id); // 重新發送, 現在傳id
             }
         }
         function deleteMessage(id) {
@@ -243,9 +276,6 @@
                 });
             });
         }
-    </script>
-</body>
-</html>
     </script>
 </body>
 </html>
