@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Grok-2 Chat</title>
+    <link rel="manifest" href="manifest.json">
+    <style>
+        body { font-family: sans-serif; margin: 0; padding: 0; }
+        .chat-container { width: 80%; margin: 20px auto; border: 1px solid #ccc; border-radius: 5px; padding: 10px; overflow-y: auto; max-height: 500px; }
+        .message { padding: 8px; margin-bottom: 15px; border-radius: 5px; position: relative; }
+        .message-user { text-align: right; background-color: #e0f7fa; }
+        .message-ai { text-align: left; background-color: #f0f0f0; }
+        .message-time { font-size: 0.8em; color: #888; position: absolute; bottom: 2px; right: 5px; }
+        .input-area { display: flex; width: 80%; margin: 10px auto; }
+        .input-area input { flex-grow: 1; padding: 8px; border: 1px solid #ccc; border-radius: 5px; }
+        .input-area button { padding: 8px 15px; background-color: #4CAF50; color: white; border: none; border-radius: 5px; cursor: pointer; }
+        #chat-interface { display: none; }
+        #api-setup { width: 80%; margin: 50px auto; text-align: center; }
+        #api-setup input { padding: 8px; margin-bottom: 10px; width: 70%; border: 1px solid #ccc; border-radius: 5px; }
+        #api-setup button { padding: 10px 20px; background-color: #008CBA; color: white; border: none; border-radius: 5px; cursor: pointer; }
+        #loading { text-align: center; margin-top: 20px; display: none; }
+        .message-content { display: inline-block; width: calc(100% - 60px); /* 扣除時間和按鈕的空間 */ word-wrap: break-word; /* 强制換行 */ vertical-align: top; /* 垂直對齊 */}
+
+        /* 按鈕容器樣式 */
+        .message-buttons { display: flex; justify-content: center; margin-top: 5px; }
+        .message-buttons button { background: none; border: none; padding: 5px 10px; margin: 0 5px; cursor: pointer; color: #888; font-size: 0.9em; border-radius: 3px; }
+        .message-user .message-buttons button { color: #008CBA; }
+        .message-ai .message-buttons button { color: #4CAF50; }
+        .message-buttons button:hover { background-color: rgba(0, 0, 0, 0.1); }
+
+        /* 可編輯的訊息內容 */
+        .message-content.editable {
+            border: 1px solid #008CBA;
+            padding: 5px;
+            border-radius: 5px;
+            background-color: white; /* 編輯時的背景色 */
+            color: black;        /* 編輯時的文字顏色 */
+        }
+
+        .dark-mode { background-color: #333; color: white; }
+        .dark-mode .message-user { background-color: #555; }
+        .dark-mode .message-ai { background-color: #444; }
+        .dark-mode .input-area input { background-color: #555; color: white; border-color: #777; }
+        .dark-mode .input-area button { background-color: #777; }
+        .dark-mode .message-content.editable { background-color: #555; color: white; border-color: #777; } /* 深色模式下的編輯狀態 */
+        #theme-toggle { position: absolute; top: 10px; right: 10px; }
+        @media (max-width: 600px) { .chat-container, .input-area, #api-setup { width: 95%; } .message { padding: 6px; font-size: 14px; } .input-area input { font-size: 14px; } }
+    </style>
+</head>
+<body>
+    <button id="theme-toggle">切換主題</button>
+    <div id="api-setup">
+        <h1>Grok-2 API 設定</h1>
+        <label for="apiKey">API 金鑰:</label><br>
+        <input type="text" id="apiKey" name="apiKey"><br><br>
+        <button onclick="connectGrok()">運行</button>
+        <p id="connection-status"></p>
+    </div>
+    <div id="chat-interface">
+        <div class="chat-container" id="chatLog"></div>
+        <div class="input-area">
+            <input type="text" id="userInput" placeholder="輸入你的訊息">
+            <button onclick="sendMessage()">發送</button>
+        </div>
+        <div id="loading">載入中...</div>
+    </div>
+    <script>
+        let apiKey = "";
+        const apiSetup = document.getElementById("api-setup");
+        const chatInterface = document.getElementById("chat-interface");
+        const chatLog = document.getElementById("chatLog");
+        const userInput = document.getElementById("userInput");
+        const connectionStatus = document.getElementById("connection-status");
+        const loadingIndicator = document.getElementById("loading");
+        const apiUrl = "https://api.x.ai/v1/chat/completions";
+        const themeToggle = document.getElementById("theme-toggle");
+        let isDarkMode = false;
+        let messageId = 0;
+        let messages = {};
+        let currentlyEditing = null; // 追蹤目前正在編輯的訊息 ID
+
+        function connectGrok() {
+            apiKey = document.getElementById("apiKey").value;
+            loadingIndicator.style.display = "block";
+            fetch(apiUrl, { method: "POST", headers: { "Content-Type": "application/json", "Authorization": `Bearer ${apiKey}` }, body: JSON.stringify({ "messages": [{ "role": "system", "content": "You are a test assistant." }, { "role": "user", "content": "Testing connection. Just say hi." }], "model": "grok-2-latest", "stream": false, "temperature": 0 }) })
+            .then(response => { loadingIndicator.style.display = "none"; if (response.ok) { apiSetup.style.display = "none"; chatInterface.style.display = "block"; } else { connectionStatus.textContent = "連接失敗，請確認 API 金鑰後重試。"; } })
+            .catch(error => { loadingIndicator.style.display = "none"; connectionStatus.textContent = "連接失敗，請確認 API 金鑰後重試。"; });
+        }
+
+        function sendMessage() {
+            const message = userInput.value;
+            if (!message.trim()) return;
+            userInput.value = "";
+            const timestamp = new Date().toLocaleTimeString();
+            const id = `user-${messageId++}`;
+            messages[id] = { content: message, timestamp: timestamp };
+            appendMessage(id, 'message-user', message, timestamp, true);
+            sendToAPI(message, id);
+        }
+
+        function sendToAPI(message, id) {
+            loadingIndicator.style.display = "block";
+            fetch(apiUrl, { method: "POST", headers: { "Content-Type": "application/json", "Authorization": `Bearer ${apiKey}` }, body: JSON.stringify({ "messages": [{ "role": "user", "content": message }], "model": "grok-2-latest", "stream": false, "temperature": 0 }) })
+            .then(response => response.json()).then(data => {
+                loadingIndicator.style.display = "none";
+                const responseText = data.choices[0].message.content;
+                const aiTimestamp = new Date().toLocaleTimeString();
+                messages[id].aiResponse = { content: responseText, timestamp: aiTimestamp };
+                appendMessage(null, 'message-ai', responseText, aiTimestamp, false, id);
+            }).catch(error => { loadingIndicator.style.display = "none"; appendMessage(null, 'message-ai', `錯誤: ${error}`); });
+        }
+
+        function appendMessage(id, className, content, timestamp, showActions, userMessageId = null) {
+            let buttonsHtml = '';
+            if (className === 'message-user') {
+                buttonsHtml = `
+                    <div class="message-buttons">
+                        <button onclick="editMessage('${id}')">✏️</button>
+                        <button onclick="deleteMessage('${id}')">🗑️</button>
+                        <button onclick="copyMessage('${content.replace(/'/g, "\\'")}')">📋</button>
+                    </div>`;
+            } else {
+                // AI 訊息只顯示複製按鈕
+                buttonsHtml = `<div class="message-buttons"><button onclick="copyMessage('${content.replace(/'/g, "\\'")}')">📋</button></div>`;
+            }
+
+            const messageHtml = `
+                <div id="${id}" class="message ${className}">
+                    <span class="message-time">${timestamp}</span>
+                    <span class="message-content">${content}</span>
+                    ${buttonsHtml}
+                </div>`;
+
+            if (className === 'message-ai' && userMessageId) {
+                const userMessageDiv = document.getElementById(userMessageId);
+                if (userMessageDiv) {
+                    userMessageDiv.insertAdjacentHTML('afterend', messageHtml);
+                    return;
+                }
+            }
+
+            chatLog.innerHTML += messageHtml;
+            chatLog.scrollTop = chatLog.scrollHeight;
+        }
+
+        // 開始編輯
+        function editMessage(id) {
+            if (currentlyEditing) return; // 如果已經在編輯其他訊息，則不執行任何操作
+            currentlyEditing = id;
+            const messageDiv = document.getElementById(id);
+            const contentSpan = messageDiv.querySelector('.message-content');
+            contentSpan.contentEditable = true;  // 讓內容可編輯
+            contentSpan.classList.add('editable'); // 加上 editable 類別
+            contentSpan.focus();                 // 自動聚焦
+
+             // 監聽 blur 事件 (失去焦點)
+            contentSpan.addEventListener('blur', function saveEdit() {
+                finishEditing(id, this); // 傳遞 this (contentSpan)
+                contentSpan.removeEventListener('blur', saveEdit); // 移除監聽器
+            });
+
+            // 監聽 keydown 事件 (Enter 鍵)
+            contentSpan.addEventListener('keydown', function handleKeyDown(event) {
+                if (event.key === 'Enter' && !event.shiftKey) {
+                    event.preventDefault(); // 防止換行
+                    finishEditing(id, this);  // 傳遞 this
+                    contentSpan.removeEventListener('keydown', handleKeyDown);
+                }
+            });
+        }
+
+        // 完成編輯
+        function finishEditing(id, contentSpan) {
+            contentSpan.contentEditable = false; // 停止編輯
+            contentSpan.classList.remove('editable'); // 移除 editable 類別
+            const newContent = contentSpan.textContent;
+            currentlyEditing = null;
+
+            if (newContent && newContent !== messages[id].content) {
+                messages[id].content = newContent; //更新messages
+                if (messages[id].aiResponse) {
+                      // 刪除先前的AI回覆
+                    let nextSibling = document.getElementById(id).nextElementSibling;
+                    while(nextSibling && nextSibling.classList.contains('message-ai')) {
+                        const temp = nextSibling.nextElementSibling;
+                        nextSibling.remove();
+                        nextSibling = temp;
+                    }
+                    delete messages[id].aiResponse;
+                }
+                sendToAPI(newContent, id); // 重新發送
+            }
+        }
+        function deleteMessage(id) {
+            const messageDiv = document.getElementById(id);
+            if (messageDiv) {
+                messageDiv.remove();
+                if (messages[id] && messages[id].aiResponse) {
+                      // 刪除先前的AI回覆
+                    let nextSibling = messageDiv.nextElementSibling;
+                    while(nextSibling && nextSibling.classList.contains('message-ai')) {
+                      const temp = nextSibling.nextElementSibling;
+                      nextSibling.remove();
+                      nextSibling = temp;
+                   }
+                }
+                delete messages[id];
+            }
+        }
+
+        function copyMessage(text) {
+            navigator.clipboard.writeText(text)
+            .then(() => alert("訊息已複製"))
+            .catch(err => console.error("複製失敗:", err));
+        }
+
+        themeToggle.addEventListener('click', () => {
+            document.body.classList.toggle('dark-mode');
+            isDarkMode = !isDarkMode;
+        });
+
+        userInput.addEventListener('keydown', (event) => {
+            if (event.key === 'Enter' && !event.shiftKey) {
+                event.preventDefault();
+                sendMessage();
+            }
+        });
+
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('service-worker.js')
+                .then(registration => {
+                    console.log('ServiceWorker registration successful with scope: ', registration.scope);
+                })
+                .catch(error => {
+                    console.log('ServiceWorker registration failed: ', error);
+                });
+            });
+        }
+    </script>
+</body>
+</html>
