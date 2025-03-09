@@ -6,276 +6,485 @@
     <title>Grok-2 Chat</title>
     <link rel="manifest" href="manifest.json">
     <style>
-        /* ... (CSS 樣式保持不變) ... */
-        body { font-family: sans-serif; margin: 0; padding: 0; }
-        .chat-container { width: 80%; margin: 20px auto; border: 1px solid #ccc; border-radius: 5px; padding: 10px; overflow-y: auto; max-height: 500px; }
-        .message { padding: 8px; margin-bottom: 15px; border-radius: 5px; position: relative; }
-        .message-user { text-align: right; background-color: #e0f7fa; }
-        .message-ai { text-align: left; background-color: #f0f0f0; }
-        .message-time { font-size: 0.8em; color: #888; position: absolute; bottom: 2px; right: 5px; }
-        .input-area { display: flex; width: 80%; margin: 10px auto; }
-        .input-area input { flex-grow: 1; padding: 8px; border: 1px solid #ccc; border-radius: 5px; }
-        .input-area button { padding: 8px 15px; background-color: #4CAF50; color: white; border: none; border-radius: 5px; cursor: pointer; }
-        #chat-interface { display: none; }
-        #api-setup { width: 80%; margin: 50px auto; text-align: center; }
-        #api-setup input { padding: 8px; margin-bottom: 10px; width: 70%; border: 1px solid #ccc; border-radius: 5px; }
-        #api-setup button { padding: 10px 20px; background-color: #008CBA; color: white; border: none; border-radius: 5px; cursor: pointer; }
-        #loading { text-align: center; margin-top: 20px; display: none; }
-        .message-content { display: inline-block; width: calc(100% - 60px); /* 扣除時間和按鈕的空間 */ word-wrap: break-word; /* 强制換行 */ vertical-align: top; /* 垂直對齊 */}
-
-        /* 按鈕容器樣式 */
-        .message-buttons { display: flex; justify-content: center; margin-top: 5px; }
-        .message-buttons button { background: none; border: none; padding: 5px 10px; margin: 0 5px; cursor: pointer; color: #888; font-size: 0.9em; border-radius: 3px; }
-        .message-user .message-buttons button { color: #008CBA; }
-        .message-ai .message-buttons button { color: #4CAF50; }
-        .message-buttons button:hover { background-color: rgba(0, 0, 0, 0.1); }
-
-        /* 可編輯的訊息內容 */
-        .message-content.editable {
-            border: 1px solid #008CBA;
-            padding: 5px;
-            border-radius: 5px;
-            background-color: white; /* 編輯時的背景色 */
-            color: black;        /* 編輯時的文字顏色 */
+        :root {
+            --primary: #008CBA;
+            --secondary: #4CAF50;
+            --text: #333;
+            --bg: #fff;
+            --input-bg: #fff;
+            --border: #ccc;
+            --message-user: #e0f7fa;
+            --message-ai: #f0f0f0;
+            --radius: 5px;
+            --shadow: 0 2px 5px rgba(0,0,0,0.1);
         }
 
-        .dark-mode { background-color: #333; color: white; }
-        .dark-mode .message-user { background-color: #555; }
-        .dark-mode .message-ai { background-color: #444; }
-        .dark-mode .input-area input { background-color: #555; color: white; border-color: #777; }
-        .dark-mode .input-area button { background-color: #777; }
-        .dark-mode .message-content.editable { background-color: #555; color: white; border-color: #777; } /* 深色模式下的編輯狀態 */
-        #theme-toggle { position: absolute; top: 10px; right: 10px; }
-        @media (max-width: 600px) { .chat-container, .input-area, #api-setup { width: 95%; } .message { padding: 6px; font-size: 14px; } .input-area input { font-size: 14px; } }
+        .dark-mode {
+            --text: #fff;
+            --bg: #333;
+            --input-bg: #555;
+            --border: #777;
+            --message-user: #555;
+            --message-ai: #444;
+        }
+
+        body {
+            font-family: system-ui, sans-serif;
+            margin: 0;
+            color: var(--text);
+            background: var(--bg);
+            transition: background 0.3s, color 0.3s;
+        }
+
+        .app-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            box-shadow: var(--shadow);
+        }
+
+        .chat-section {
+            height: 70vh;
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            overflow-y: auto;
+            margin: 20px 0;
+            padding: 15px;
+            background: var(--input-bg);
+        }
+
+        .message {
+            padding: 12px;
+            margin: 10px 0;
+            border-radius: var(--radius);
+            max-width: 80%;
+            position: relative;
+        }
+
+        .message-user {
+            background: var(--message-user);
+            margin-left: auto;
+        }
+
+        .message-ai {
+            background: var(--message-ai);
+        }
+
+        .message-time {
+            font-size: 0.75em;
+            color: var(--text);
+            opacity: 0.7;
+            position: absolute;
+            bottom: 5px;
+            right: 10px;
+        }
+
+        .input-area {
+            background: var(--bg);
+            padding: 15px 0;
+            display: flex;
+            gap: 10px;
+        }
+
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: var(--radius);
+            cursor: pointer;
+            transition: opacity 0.2s;
+        }
+
+        .btn:hover { opacity: 0.9; }
+        .btn-primary { background: var(--primary); color: white; }
+        .btn-secondary { background: var(--secondary); color: white; }
+
+        #userInput {
+            flex: 1;
+            padding: 12px;
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            background: var(--input-bg);
+            color: var(--text);
+        }
+
+        .hidden { display: none; }
+        .loading { text-align: center; padding: 20px; }
+
+        .edit-textarea {
+            width: 98%;
+            padding: 5px;
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            resize: vertical;
+            font-family: inherit;
+            font-size: inherit;
+            color: inherit;
+            background-color: var(--input-bg);
+        }
+
+        .toolbar {
+            margin-bottom: 10px;
+            display: flex;
+            gap: 10px;
+        }
+
+        @media (max-width: 768px) {
+            .app-container { padding: 10px; }
+            .chat-section { height: 65vh; }
+            .message { max-width: 90%; }
+        }
     </style>
 </head>
 <body>
-    <button id="theme-toggle">切換主題</button>
-    <div id="api-setup">
-        <h1>Grok-2 API 設定</h1>
-        <label for="apiKey">API 金鑰:</label><br>
-        <input type="text" id="apiKey" name="apiKey"><br><br>
-        <button onclick="connectGrok()">運行</button>
-        <p id="connection-status"></p>
-    </div>
-    <div id="chat-interface">
-        <div class="chat-container" id="chatLog"></div>
-        <div class="input-area">
-            <input type="text" id="userInput" placeholder="輸入你的訊息">
-            <button onclick="sendMessage()">發送</button>
-        </div>
-        <div id="loading">載入中...</div>
-    </div>
+    <main class="app-container">
+        <button class="btn btn-secondary" data-action="toggle-theme">切換主題</button>
+
+        <section id="api-setup">
+            <h1>API 設定</h1>
+            <input type="text" id="apiKey" placeholder="API 金鑰">
+            <button class="btn btn-primary" data-action="connect">連接</button>
+            <p class="status" id="connection-status"></p>
+        </section>
+
+        <section class="hidden" id="chat-interface">
+            <div class="toolbar">
+                <button class="btn btn-primary" data-action="export">匯出對話</button>
+                <input type="file" id="fileInput" accept=".json">
+            </div>
+            <section class="chat-section" id="chatLog" aria-live="polite"></section>
+            <div class="input-area">
+                <input type="text" id="userInput" placeholder="輸入訊息...">
+                <button class="btn btn-primary" data-action="send">發送</button>
+            </div>
+        </section>
+
+        <div class="loading hidden" id="loading">載入中...</div>
+    </main>
+
     <script>
-        let apiKey = "";
-        const apiSetup = document.getElementById("api-setup");
-        const chatInterface = document.getElementById("chat-interface");
-        const chatLog = document.getElementById("chatLog");
-        const userInput = document.getElementById("userInput");
-        const connectionStatus = document.getElementById("connection-status");
-        const loadingIndicator = document.getElementById("loading");
-        const apiUrl = "https://api.x.ai/v1/chat/completions";
-        const themeToggle = document.getElementById("theme-toggle");
-        let isDarkMode = false;
-        let messageId = 0;
-        let messages = {};
-        let currentlyEditing = null;
+        const ChatApp = (() => {
+            const config = {
+                api: {
+                    url: "https://api.x.ai/v1/chat/completions",
+                    model: "grok-2-latest",
+                    headers: { 'Content-Type': 'application/json' }
+                },
+                maxHistory: 100
+            };
 
-        function connectGrok() {
-            apiKey = document.getElementById("apiKey").value;
-            loadingIndicator.style.display = "block";
-            // 初始系統訊息，可以放在這裡或 sendToAPI 中
-            fetch(apiUrl, { method: "POST", headers: { "Content-Type": "application/json", "Authorization": `Bearer ${apiKey}` }, body: JSON.stringify({ "messages": [{ "role": "system", "content": "You are a helpful assistant." }], "model": "grok-2-latest", "stream": false, "temperature": 0 }) })  //調整了這裡
-            .then(response => { loadingIndicator.style.display = "none"; if (response.ok) { apiSetup.style.display = "none"; chatInterface.style.display = "block"; } else { connectionStatus.textContent = "連接失敗，請確認 API 金鑰後重試。"; } })
-            .catch(error => { loadingIndicator.style.display = "none"; connectionStatus.textContent = "連接失敗，請確認 API 金鑰後重試。"; });
-        }
+            const state = {
+                messages: new Map(),
+                messageId: 0,
+                apiKey: '',
+                isDarkMode: false,
+                editingMessageId: null,
+            };
 
+            const dom = {
+                appContainer: document.querySelector('.app-container'),
+                chatInterface: document.getElementById('chat-interface'),
+                apiSetup: document.getElementById('api-setup'),
+                chatLog: document.getElementById('chatLog'),
+                userInput: document.getElementById('userInput'),
+                loading: document.getElementById('loading'),
+                status: document.getElementById('connection-status'),
+                fileInput: document.getElementById('fileInput'),
+            };
 
-        function sendMessage() {
-            const message = userInput.value;
-            if (!message.trim()) return;
-            userInput.value = "";
-            const timestamp = new Date().toLocaleTimeString();
-            const id = `user-${messageId++}`;
-            messages[id] = { content: message, timestamp: timestamp, role: "user" }; // 加入 role
-            appendMessage(id, 'message-user', message, timestamp, true);
-            sendToAPI(id); // 傳遞訊息 ID
-        }
+            const initEvents = () => {
+                document.body.addEventListener('click', handleActions);
+                dom.userInput.addEventListener('keydown', handleKeyboard);
+                dom.fileInput.addEventListener('change', handleFileSelect);
+            };
 
-        function sendToAPI(userMessageId) {
-            loadingIndicator.style.display = "block";
+            const handleActions = (e) => {
+                const btn = e.target.closest('[data-action]');
+                if (!btn) return;
 
-            // 建立對話歷史
-            let chatHistory = [];
-            for (let key in messages) {
-                if (messages.hasOwnProperty(key)) { //確保只處理messages自身的屬性
-                    const msg = messages[key];
-                    chatHistory.push({ role: msg.role, content: msg.content }); // 使用 role
-                    if (msg.aiResponse) {
-                      chatHistory.push({ role: "assistant", content: msg.aiResponse.content }); // 使用 role
-                  }
-                }
+                const action = btn.dataset.action;
+                const messageId = btn.closest('.message')?.dataset.id;
 
-            }
+                const actions = {
+                    connect: connectAPI,
+                    send: sendMessage,
+                    export: exportChat,
+                    'toggle-theme': toggleTheme,
+                    edit: () => editMessage(messageId),
+                    delete: () => deleteMessage(messageId),
+                    copy: () => copyMessage(messageId),
+                    'confirm-edit': () => confirmEdit(messageId),
+                    'cancel-edit': cancelEdit,
+                };
+                actions[action]?.();
+            };
 
-            fetch(apiUrl, {
-                method: "POST",
-                headers: { "Content-Type": "application/json", "Authorization": `Bearer ${apiKey}` },
-                body: JSON.stringify({
-                    "messages": chatHistory, // 傳送整個對話歷史
-                    "model": "grok-2-latest",
-                    "stream": false,
-                    "temperature": 0
-                })
-            })
-            .then(response => response.json())
-            .then(data => {
-                loadingIndicator.style.display = "none";
-                const responseText = data.choices[0].message.content;
-                const aiTimestamp = new Date().toLocaleTimeString();
-
-                // 更新 messages 物件
-                messages[userMessageId].aiResponse = { content: responseText, timestamp: aiTimestamp, role: "assistant" }; // 加入 role
-                appendMessage(null, 'message-ai', responseText, aiTimestamp, false, userMessageId);
-
-            })
-            .catch(error => {
-                loadingIndicator.style.display = "none";
-                appendMessage(null, 'message-ai', `錯誤: ${error}`);
-            });
-        }
-        function appendMessage(id, className, content, timestamp, showActions, userMessageId = null) {
-            let buttonsHtml = '';
-            if (className === 'message-user') {
-                buttonsHtml = `
-                    <div class="message-buttons">
-                        <button onclick="editMessage('${id}')">✏️</button>
-                        <button onclick="deleteMessage('${id}')">🗑️</button>
-                        <button onclick="copyMessage('${content.replace(/'/g, "\\'")}')">📋</button>
-                    </div>`;
-            } else {
-                // AI 訊息只顯示複製按鈕
-                buttonsHtml = `<div class="message-buttons"><button onclick="copyMessage('${content.replace(/'/g, "\\'")}')">📋</button></div>`;
-            }
-
-            const messageHtml = `
-                <div id="${id}" class="message ${className}">
-                    <span class="message-time">${timestamp}</span>
-                    <span class="message-content">${content}</span>
-                    ${buttonsHtml}
-                </div>`;
-
-            if (className === 'message-ai' && userMessageId) {
-                const userMessageDiv = document.getElementById(userMessageId);
-                if (userMessageDiv) {
-                    userMessageDiv.insertAdjacentHTML('afterend', messageHtml);
-                    setTimeout(() => { // 延遲執行
-                        chatLog.scrollTop = chatLog.scrollHeight;
-                    }, 0);
-                    return;
-                }
-            }
-
-            chatLog.innerHTML += messageHtml;
-            setTimeout(() => { // 延遲執行
-                chatLog.scrollTop = chatLog.scrollHeight;
-            }, 0);
-        }
-
-                // 開始編輯
-        function editMessage(id) {
-            if (currentlyEditing) return; // 如果已經在編輯其他訊息，則不執行任何操作
-            currentlyEditing = id;
-            const messageDiv = document.getElementById(id);
-            const contentSpan = messageDiv.querySelector('.message-content');
-            contentSpan.contentEditable = true;  // 讓內容可編輯
-            contentSpan.classList.add('editable'); // 加上 editable 類別
-            contentSpan.focus();                 // 自動聚焦
-
-             // 監聽 blur 事件 (失去焦點)
-            contentSpan.addEventListener('blur', function saveEdit() {
-                finishEditing(id, this); // 傳遞 this (contentSpan)
-                contentSpan.removeEventListener('blur', saveEdit); // 移除監聽器
-            });
-
-            // 監聽 keydown 事件 (Enter 鍵)
-            contentSpan.addEventListener('keydown', function handleKeyDown(event) {
-                if (event.key === 'Enter' && !event.shiftKey) {
-                    event.preventDefault(); // 防止換行
-                    finishEditing(id, this);  // 傳遞 this
-                    contentSpan.removeEventListener('keydown', handleKeyDown);
-                }
-            });
-        }
-
-        // 完成編輯
-        function finishEditing(id, contentSpan) {
-            contentSpan.contentEditable = false; // 停止編輯
-            contentSpan.classList.remove('editable'); // 移除 editable 類別
-            const newContent = contentSpan.textContent;
-            currentlyEditing = null;
-
-            if (newContent && newContent !== messages[id].content) {
-                messages[id].content = newContent; //更新messages
-                if (messages[id].aiResponse) {
-                     // 刪除先前的AI回覆
-                    let nextSibling = document.getElementById(id).nextElementSibling;
-                    while(nextSibling && nextSibling.classList.contains('message-ai')) {
-                        const temp = nextSibling.nextElementSibling;
-                        nextSibling.remove();
-                        nextSibling = temp;
+            const handleKeyboard = (e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    if (state.editingMessageId) {
+                        confirmEdit(state.editingMessageId);
+                    } else {
+                        sendMessage();
                     }
-                    delete messages[id].aiResponse;
                 }
-                sendToAPI(id); // 重新發送, 現在傳id
-            }
-        }
-        function deleteMessage(id) {
-            const messageDiv = document.getElementById(id);
-            if (messageDiv) {
-                messageDiv.remove();
-                if (messages[id] && messages[id].aiResponse) {
-                      // 刪除先前的AI回覆
-                    let nextSibling = messageDiv.nextElementSibling;
-                    while(nextSibling && nextSibling.classList.contains('message-ai')) {
-                      const temp = nextSibling.nextElementSibling;
-                      nextSibling.remove();
-                      nextSibling = temp;
-                   }
+                if (e.key === 'Escape' && state.editingMessageId) {
+                    cancelEdit();
                 }
-                delete messages[id];
-            }
-        }
+            };
 
-        function copyMessage(text) {
-            navigator.clipboard.writeText(text)
-            .then(() => alert("訊息已複製"))
-            .catch(err => console.error("複製失敗:", err));
-        }
+            const connectAPI = async () => {
+                state.apiKey = document.getElementById('apiKey').value;
+                toggleLoading(true);
 
-        themeToggle.addEventListener('click', () => {
-            document.body.classList.toggle('dark-mode');
-            isDarkMode = !isDarkMode;
-        });
+                try {
+                    await testConnection();
+                    dom.apiSetup.classList.add('hidden');
+                    dom.chatInterface.classList.remove('hidden');
+                    initServiceWorker();
+                } catch (error) {
+                    dom.status.textContent = `連接失敗: ${error.message}`;
+                } finally {
+                    toggleLoading(false);
+                }
+            };
 
-        userInput.addEventListener('keydown', (event) => {
-            if (event.key === 'Enter' && !event.shiftKey) {
-                event.preventDefault();
-                sendMessage();
-            }
-        });
-
-        if ('serviceWorker' in navigator) {
-            window.addEventListener('load', () => {
-                navigator.serviceWorker.register('service-worker.js')
-                .then(registration => {
-                    console.log('ServiceWorker registration successful with scope: ', registration.scope);
-                })
-                .catch(error => {
-                    console.log('ServiceWorker registration failed: ', error);
+            const testConnection = async () => {
+                const response = await fetch(config.api.url, {
+                    method: 'POST',
+                    headers: { ...config.api.headers, Authorization: `Bearer ${state.apiKey}` },
+                    body: JSON.stringify({
+                        messages: [{ role: "user", content: "測試連接" }],
+                        model: config.api.model
+                    })
                 });
-            });
-        }
+                if (!response.ok) throw new Error('連接失敗');
+            };
+
+            const sendMessage = async () => {
+                const content = dom.userInput.value.trim();
+                if (!content) return;
+
+                dom.userInput.value = '';
+                const userMessage = createMessage(content, 'user');
+                renderMessage(userMessage);
+
+                try {
+                    toggleLoading(true);
+                    const aiResponse = await getAIResponse(userMessage);
+                    renderMessage(aiResponse);
+                } catch (error) {
+                    renderMessage(createMessage(`錯誤: ${error.message}`, 'assistant'));
+                } finally {
+                    toggleLoading(false);
+                }
+            };
+
+            const getAIResponse = async () => {
+                const history = Array.from(state.messages.values())
+                    .slice(-config.maxHistory)
+                    .map(({ role, content }) => ({ role, content }));
+
+                const response = await fetch(config.api.url, {
+                    method: 'POST',
+                    headers: { ...config.api.headers, Authorization: `Bearer ${state.apiKey}` },
+                    body: JSON.stringify({
+                        messages: history,
+                        model: config.api.model
+                    })
+                });
+
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    throw new Error(`API 錯誤: ${response.status} - ${errorText}`);
+                }
+                const data = await response.json();
+
+                if (!data.choices?.[0]?.message?.content) {
+                    return createMessage("抱歉，我沒有聽懂。", 'assistant');
+                }
+
+                return createMessage(data.choices[0].message.content, 'assistant');
+            };
+
+            const createMessage = (content, role) => {
+                if (!content) {
+                  return;
+                }
+                const correctedRole = role === 'ai' ? 'assistant' : role;
+                const id = `${correctedRole}-${state.messageId++}`;
+                const message = {
+                    id,
+                    content,
+                    role: correctedRole,
+                    timestamp: new Date().toLocaleTimeString(),
+                    element: null
+                };
+                state.messages.set(id, message);
+                return message;
+            };
+            const renderMessage = (message) => {
+                if (!message) return;
+                const template = document.createElement('template');
+                template.innerHTML = `
+                    <div class="message message-${message.role}" data-id="${message.id}">
+                        <div class="message-content">${escapeHTML(message.content)}</div>
+                        <span class="message-time">${message.timestamp}</span>
+                        <div class="message-actions">
+                            ${message.role === 'user' ? `
+                                <button data-action="edit">✏️</button>
+                                <button data-action="delete">🗑️</button>
+                            ` : ''}
+                            <button data-action="copy">📋</button>
+                        </div>
+                    </div>
+                `;
+
+                const element = template.content.firstElementChild;
+                message.element = element;
+                dom.chatLog.append(element);
+                element.scrollIntoView({ behavior: 'smooth' });
+            };
+
+            const editMessage = (messageId) => {
+                const message = state.messages.get(messageId);
+                if (!message) return;
+
+                state.editingMessageId = messageId;
+                const contentElement = message.element.querySelector('.message-content');
+
+                const textarea = document.createElement('textarea');
+                textarea.className = 'edit-textarea';
+                textarea.value = message.content;
+                contentElement.innerHTML = '';
+                contentElement.appendChild(textarea);
+
+                const actions = message.element.querySelector('.message-actions');
+                actions.innerHTML = `
+                    <button data-action="confirm-edit">✔️</button>
+                    <button data-action="cancel-edit">❌</button>
+                `;
+                textarea.focus();
+            };
+
+            const confirmEdit = (messageId) => {
+                const message = state.messages.get(messageId);
+                if (!message) return;
+
+                const textarea = message.element.querySelector('textarea');
+                const newContent = textarea.value.trim();
+
+                if (newContent) {
+                    message.content = newContent;
+                    message.element.querySelector('.message-content').innerHTML = escapeHTML(newContent);
+                }
+
+                resetMessageActions(message);
+                state.editingMessageId = null;
+            };
+
+            const cancelEdit = () => {
+                if (!state.editingMessageId) return;
+
+                const message = state.messages.get(state.editingMessageId);
+                if (message) {
+                    message.element.querySelector('.message-content').innerHTML =
+                        escapeHTML(message.content);
+                    resetMessageActions(message);
+                }
+                state.editingMessageId = null;
+            };
+
+            const resetMessageActions = (message) => {
+                const actions = message.element.querySelector('.message-actions');
+                actions.innerHTML = `
+                    ${message.role === 'user' ? `
+                        <button data-action="edit">✏️</button>
+                        <button data-action="delete">🗑️</button>
+                    ` : ''}
+                    <button data-action="copy">📋</button>
+                `;
+            };
+
+            const deleteMessage = (messageId) => {
+                if (confirm('確定要刪除訊息嗎？')) {
+                    const message = state.messages.get(messageId);
+                    if (message) {
+                        message.element.remove();
+                        state.messages.delete(messageId);
+                    }
+                }
+            };
+
+            const copyMessage = (messageId) => {
+                const content = state.messages.get(messageId)?.content || '';
+                navigator.clipboard.writeText(content)
+                    .catch(() => alert('複製失敗'));
+            };
+
+            const exportChat = () => {
+                const chatData = Array.from(state.messages.values()).map(msg => ({
+                    content: msg.content,
+                    role: msg.role,
+                    timestamp: msg.timestamp
+                }));
+
+                const blob = new Blob([JSON.stringify(chatData)], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'chat_history.json';
+                a.click();
+                URL.revokeObjectURL(url);
+            };
+
+            const handleFileSelect = (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    try {
+                        const importedData = JSON.parse(e.target.result);
+                        state.messages.clear();
+                        state.messageId = 0;
+                        dom.chatLog.innerHTML = '';
+
+                        importedData.forEach(msgData => {
+                            const message = createMessage(msgData.content, msgData.role);
+                            message.timestamp = msgData.timestamp;
+                            renderMessage(message);
+                        });
+                    } catch (error) {
+                        alert('檔案格式錯誤');
+                    }
+                };
+                reader.readAsText(file);
+            };
+
+            const escapeHTML = str => str.replace(/[&<>"']/g, m =>
+                ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
+
+            const toggleLoading = (show) => {
+                dom.loading.classList.toggle('hidden', !show);
+                dom.userInput.disabled = show;
+            };
+
+            const toggleTheme = () => {
+                state.isDarkMode = !state.isDarkMode;
+                document.body.classList.toggle('dark-mode', state.isDarkMode);
+            };
+
+            const initServiceWorker = () => {
+                if ('serviceWorker' in navigator) {
+                    navigator.serviceWorker.register('service-worker.js')
+                        .catch(console.error);
+                }
+            };
+
+            return { init: () => initEvents() };
+        })();
+
+        document.addEventListener('DOMContentLoaded', ChatApp.init);
     </script>
 </body>
 </html>
