@@ -1,490 +1,86 @@
 <!DOCTYPE html>
-<html lang="zh-Hant">
+<html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Grok-2 Chat</title>
-    <link rel="manifest" href="manifest.json">
-    <style>
-        :root {
-            --primary: #008CBA;
-            --secondary: #4CAF50;
-            --text: #333;
-            --bg: #fff;
-            --input-bg: #fff;
-            --border: #ccc;
-            --message-user: #e0f7fa;
-            --message-ai: #f0f0f0;
-            --radius: 5px;
-            --shadow: 0 2px 5px rgba(0,0,0,0.1);
-        }
-
-        .dark-mode {
-            --text: #fff;
-            --bg: #333;
-            --input-bg: #555;
-            --border: #777;
-            --message-user: #555;
-            --message-ai: #444;
-        }
-
-        body {
-            font-family: system-ui, sans-serif;
-            margin: 0;
-            color: var(--text);
-            background: var(--bg);
-            transition: background 0.3s, color 0.3s;
-        }
-
-        .app-container {
-            max-width: 1200px;
-            margin: 0 auto;
-            padding: 20px;
-            box-shadow: var(--shadow);
-        }
-
-        .chat-section {
-            height: 70vh;
-            border: 1px solid var(--border);
-            border-radius: var(--radius);
-            overflow-y: auto;
-            margin: 20px 0;
-            padding: 15px;
-            background: var(--input-bg);
-        }
-
-        .message {
-            padding: 12px;
-            margin: 10px 0;
-            border-radius: var(--radius);
-            max-width: 80%;
-            position: relative;
-        }
-
-        .message-user {
-            background: var(--message-user);
-            margin-left: auto;
-        }
-
-        .message-ai {
-            background: var(--message-ai);
-        }
-
-        .message-time {
-            font-size: 0.75em;
-            color: var(--text);
-            opacity: 0.7;
-            position: absolute;
-            bottom: 5px;
-            right: 10px;
-        }
-
-        .input-area {
-            background: var(--bg);
-            padding: 15px 0;
-            display: flex;
-            gap: 10px;
-        }
-
-        .btn {
-            padding: 10px 20px;
-            border: none;
-            border-radius: var(--radius);
-            cursor: pointer;
-            transition: opacity 0.2s;
-        }
-
-        .btn:hover { opacity: 0.9; }
-        .btn-primary { background: var(--primary); color: white; }
-        .btn-secondary { background: var(--secondary); color: white; }
-
-        #userInput {
-            flex: 1;
-            padding: 12px;
-            border: 1px solid var(--border);
-            border-radius: var(--radius);
-            background: var(--input-bg);
-            color: var(--text);
-        }
-
-        .hidden { display: none; }
-        .loading { text-align: center; padding: 20px; }
-
-        .edit-textarea {
-            width: 98%;
-            padding: 5px;
-            border: 1px solid var(--border);
-            border-radius: var(--radius);
-            resize: vertical;
-            font-family: inherit;
-            font-size: inherit;
-            color: inherit;
-            background-color: var(--input-bg);
-        }
-
-        .toolbar {
-            margin-bottom: 10px;
-            display: flex;
-            gap: 10px;
-        }
-
-        @media (max-width: 768px) {
-            .app-container { padding: 10px; }
-            .chat-section { height: 65vh; }
-            .message { max-width: 90%; }
-        }
-    </style>
+    <title>Grok Web Chat V7 (Multi-Session)</title> <!-- 更新標題 -->
+    <link rel="stylesheet" href="style.css">
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" integrity="sha512-iecdLmaskl7CVkqkXNQ/ZH/XLlvWZOJyj7Yy7tcenmpD1ypASozpmT/E0iPtmFIB46ZmdtAc9eNBvH0H/ZpiBw==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+    <!-- Marked.js -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <!-- DOMPurify -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.0.6/purify.min.js"></script>
 </head>
 <body>
-    <main class="app-container">
-        <button class="btn btn-secondary" data-action="toggle-theme">切換主題</button>
+    <div class="chat-container">
+        <!-- 側邊欄 -->
+        <div class="sidebar" id="sidebar">
+            <h2><i class="fa-solid fa-robot"></i> Grok Chat</h2>
+            <hr>
 
-        <section id="api-setup">
-            <h1>API 設定</h1>
-            <input type="text" id="apiKey" placeholder="API 金鑰">
-            <button class="btn btn-primary" data-action="connect">連接</button>
-            <p class="status" id="connection-status"></p>
-        </section>
-
-        <section class="hidden" id="chat-interface">
-            <div class="toolbar">
-                <button class="btn btn-primary" data-action="export">匯出對話</button>
-                <input type="file" id="fileInput" accept=".json">
+            <!-- API Key Section -->
+            <div class="api-section">
+                <label for="api-key-input"><i class="fas fa-key"></i> API 金鑰:</label>
+                <input type="password" id="api-key-input" placeholder="請輸入您的 xAI API 金鑰">
+                <button id="connect-api-button" title="儲存金鑰並測試連線"><i class="fas fa-plug"></i> 連線</button>
+                <small id="api-status" class="api-status-message">請輸入金鑰並連線</small>
+                <button id="clear-api-key-button" title="清除已儲存的金鑰" style="display: none;"><i class="fas fa-eraser"></i> 清除金鑰</button>
             </div>
-            <section class="chat-section" id="chatLog" aria-live="polite"></section>
-            <div class="input-area">
-                <input type="text" id="userInput" placeholder="輸入訊息...">
-                <button class="btn btn-primary" data-action="send">發送</button>
+            <hr>
+
+             <!-- Chat Session List Section -->
+             <div class="session-section">
+                 <div class="session-header">
+                     <label><i class="fas fa-history"></i> 聊天記錄</label>
+                     <button id="new-chat-button" title="新增聊天"><i class="fas fa-plus"></i></button>
+                 </div>
+                 <ul id="chat-session-list">
+                     <!-- 聊天記錄列表會動態加載到這裡 -->
+                     <!-- <li><button class="session-button active" data-session-id="...">聊天 1</button></li> -->
+                 </ul>
+             </div>
+             <hr>
+
+
+            <label for="model-selector"><i class="fas fa-cogs"></i> 選擇模型:</label>
+            <select id="model-selector" title="選擇要對話的 Grok 模型">
+                 <option value="grok-3-mini-beta" selected>Grok 3 Mini (Beta)</option>
+                 <option value="grok-3-latest">Grok 3 Latest</option>
+                 <option value="grok-3-fast-beta">Grok 3 Fast (Beta)</option>
+                 <option value="grok-3-beta">Grok 3 (Beta)</option>
+                 <option value="grok-2-1212">Grok 2 (1212)</option>
+            </select>
+            <button id="export-button" title="匯出目前對話 (JSON)"><i class="fas fa-download"></i> 匯出對話</button>
+            <button id="import-button" title="匯入對話 (建立新聊天)"><i class="fas fa-upload"></i> 匯入對話</button>
+            <input type="file" id="import-file-input" accept=".json" style="display: none;">
+            <button id="delete-current-chat-button" title="刪除目前聊天記錄"><i class="fas fa-trash-alt"></i> 刪除目前聊天</button> <!-- 修改按鈕文字和 ID -->
+            <hr>
+            <button id="theme-toggle-button" title="切換淺色/深色模式"><i class="fas fa-sun"></i> 切換主題</button>
+
+             <button id="close-sidebar-button" class="mobile-only close-button" title="關閉選單"><i class="fas fa-times"></i></button>
+        </div>
+        <!-- 遮罩層 -->
+        <div class="sidebar-overlay" id="sidebar-overlay"></div>
+        <!-- 主要聊天區 -->
+        <div class="main-chat-area">
+            <!-- 手機版 Header -->
+            <div class="mobile-header mobile-only">
+                <button id="menu-toggle-button" title="開啟選單"><i class="fas fa-bars"></i></button>
+                <span class="mobile-title" id="mobile-chat-title">Grok Chat</span> <!-- 添加 ID 以顯示當前聊天名稱 -->
             </div>
-        </section>
-
-        <div class="loading hidden" id="loading">載入中...</div>
-    </main>
-
-    <script>
-        const ChatApp = (() => {
-            const config = {
-                api: {
-                    url: "https://api.x.ai/v1/chat/completions",
-                    model: "grok-2-latest",
-                    headers: { 'Content-Type': 'application/json' }
-                },
-                maxHistory: 100
-            };
-
-            const state = {
-                messages: new Map(),
-                messageId: 0,
-                apiKey: '',
-                isDarkMode: false,
-                editingMessageId: null,
-            };
-
-            const dom = {
-                appContainer: document.querySelector('.app-container'),
-                chatInterface: document.getElementById('chat-interface'),
-                apiSetup: document.getElementById('api-setup'),
-                chatLog: document.getElementById('chatLog'),
-                userInput: document.getElementById('userInput'),
-                loading: document.getElementById('loading'),
-                status: document.getElementById('connection-status'),
-                fileInput: document.getElementById('fileInput'),
-            };
-
-            const initEvents = () => {
-                document.body.addEventListener('click', handleActions);
-                dom.userInput.addEventListener('keydown', handleKeyboard);
-                dom.fileInput.addEventListener('change', handleFileSelect);
-            };
-
-            const handleActions = (e) => {
-                const btn = e.target.closest('[data-action]');
-                if (!btn) return;
-
-                const action = btn.dataset.action;
-                const messageId = btn.closest('.message')?.dataset.id;
-
-                const actions = {
-                    connect: connectAPI,
-                    send: sendMessage,
-                    export: exportChat,
-                    'toggle-theme': toggleTheme,
-                    edit: () => editMessage(messageId),
-                    delete: () => deleteMessage(messageId),
-                    copy: () => copyMessage(messageId),
-                    'confirm-edit': () => confirmEdit(messageId),
-                    'cancel-edit': cancelEdit,
-                };
-                actions[action]?.();
-            };
-
-            const handleKeyboard = (e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
-                    e.preventDefault();
-                    if (state.editingMessageId) {
-                        confirmEdit(state.editingMessageId);
-                    } else {
-                        sendMessage();
-                    }
-                }
-                if (e.key === 'Escape' && state.editingMessageId) {
-                    cancelEdit();
-                }
-            };
-
-            const connectAPI = async () => {
-                state.apiKey = document.getElementById('apiKey').value;
-                toggleLoading(true);
-
-                try {
-                    await testConnection();
-                    dom.apiSetup.classList.add('hidden');
-                    dom.chatInterface.classList.remove('hidden');
-                    initServiceWorker();
-                } catch (error) {
-                    dom.status.textContent = `連接失敗: ${error.message}`;
-                } finally {
-                    toggleLoading(false);
-                }
-            };
-
-            const testConnection = async () => {
-                const response = await fetch(config.api.url, {
-                    method: 'POST',
-                    headers: { ...config.api.headers, Authorization: `Bearer ${state.apiKey}` },
-                    body: JSON.stringify({
-                        messages: [{ role: "user", content: "測試連接" }],
-                        model: config.api.model
-                    })
-                });
-                if (!response.ok) throw new Error('連接失敗');
-            };
-
-            const sendMessage = async () => {
-                const content = dom.userInput.value.trim();
-                if (!content) return;
-
-                dom.userInput.value = '';
-                const userMessage = createMessage(content, 'user');
-                renderMessage(userMessage);
-
-                try {
-                    toggleLoading(true);
-                    const aiResponse = await getAIResponse(userMessage);
-                    renderMessage(aiResponse);
-                } catch (error) {
-                    renderMessage(createMessage(`錯誤: ${error.message}`, 'assistant'));
-                } finally {
-                    toggleLoading(false);
-                }
-            };
-
-            const getAIResponse = async () => {
-                const history = Array.from(state.messages.values())
-                    .slice(-config.maxHistory)
-                    .map(({ role, content }) => ({ role, content }));
-
-                const response = await fetch(config.api.url, {
-                    method: 'POST',
-                    headers: { ...config.api.headers, Authorization: `Bearer ${state.apiKey}` },
-                    body: JSON.stringify({
-                        messages: history,
-                        model: config.api.model
-                    })
-                });
-
-                if (!response.ok) {
-                    const errorText = await response.text();
-                    throw new Error(`API 錯誤: ${response.status} - ${errorText}`);
-                }
-                const data = await response.json();
-
-                if (!data.choices?.[0]?.message?.content) {
-                    return createMessage("抱歉，我沒有聽懂。", 'assistant');
-                }
-
-                return createMessage(data.choices[0].message.content, 'assistant');
-            };
-
-            const createMessage = (content, role) => {
-                if (!content) {
-                  return;
-                }
-                const correctedRole = role === 'ai' ? 'assistant' : role;
-                const id = `${correctedRole}-${state.messageId++}`;
-                const message = {
-                    id,
-                    content,
-                    role: correctedRole,
-                    timestamp: new Date().toLocaleTimeString(),
-                    element: null
-                };
-                state.messages.set(id, message);
-                return message;
-            };
-            const renderMessage = (message) => {
-                if (!message) return;
-                const template = document.createElement('template');
-                template.innerHTML = `
-                    <div class="message message-${message.role}" data-id="${message.id}">
-                        <div class="message-content">${escapeHTML(message.content)}</div>
-                        <span class="message-time">${message.timestamp}</span>
-                        <div class="message-actions">
-                            ${message.role === 'user' ? `
-                                <button data-action="edit">✏️</button>
-                                <button data-action="delete">🗑️</button>
-                            ` : ''}
-                            <button data-action="copy">📋</button>
-                        </div>
-                    </div>
-                `;
-
-                const element = template.content.firstElementChild;
-                message.element = element;
-                dom.chatLog.append(element);
-                element.scrollIntoView({ behavior: 'smooth' });
-            };
-
-            const editMessage = (messageId) => {
-                const message = state.messages.get(messageId);
-                if (!message) return;
-
-                state.editingMessageId = messageId;
-                const contentElement = message.element.querySelector('.message-content');
-
-                const textarea = document.createElement('textarea');
-                textarea.className = 'edit-textarea';
-                textarea.value = message.content;
-                contentElement.innerHTML = '';
-                contentElement.appendChild(textarea);
-
-                const actions = message.element.querySelector('.message-actions');
-                actions.innerHTML = `
-                    <button data-action="confirm-edit">✔️</button>
-                    <button data-action="cancel-edit">❌</button>
-                `;
-                textarea.focus();
-            };
-
-            const confirmEdit = (messageId) => {
-                const message = state.messages.get(messageId);
-                if (!message) return;
-
-                const textarea = message.element.querySelector('textarea');
-                const newContent = textarea.value.trim();
-
-                if (newContent) {
-                    message.content = newContent;
-                    message.element.querySelector('.message-content').innerHTML = escapeHTML(newContent);
-                }
-
-                resetMessageActions(message);
-                state.editingMessageId = null;
-            };
-
-            const cancelEdit = () => {
-                if (!state.editingMessageId) return;
-
-                const message = state.messages.get(state.editingMessageId);
-                if (message) {
-                    message.element.querySelector('.message-content').innerHTML =
-                        escapeHTML(message.content);
-                    resetMessageActions(message);
-                }
-                state.editingMessageId = null;
-            };
-
-            const resetMessageActions = (message) => {
-                const actions = message.element.querySelector('.message-actions');
-                actions.innerHTML = `
-                    ${message.role === 'user' ? `
-                        <button data-action="edit">✏️</button>
-                        <button data-action="delete">🗑️</button>
-                    ` : ''}
-                    <button data-action="copy">📋</button>
-                `;
-            };
-
-            const deleteMessage = (messageId) => {
-                if (confirm('確定要刪除訊息嗎？')) {
-                    const message = state.messages.get(messageId);
-                    if (message) {
-                        message.element.remove();
-                        state.messages.delete(messageId);
-                    }
-                }
-            };
-
-            const copyMessage = (messageId) => {
-                const content = state.messages.get(messageId)?.content || '';
-                navigator.clipboard.writeText(content)
-                    .catch(() => alert('複製失敗'));
-            };
-
-            const exportChat = () => {
-                const chatData = Array.from(state.messages.values()).map(msg => ({
-                    content: msg.content,
-                    role: msg.role,
-                    timestamp: msg.timestamp
-                }));
-
-                const blob = new Blob([JSON.stringify(chatData)], { type: 'application/json' });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = 'chat_history.json';
-                a.click();
-                URL.revokeObjectURL(url);
-            };
-
-            const handleFileSelect = (e) => {
-                const file = e.target.files[0];
-                if (!file) return;
-
-                const reader = new FileReader();
-                reader.onload = (e) => {
-                    try {
-                        const importedData = JSON.parse(e.target.result);
-                        state.messages.clear();
-                        state.messageId = 0;
-                        dom.chatLog.innerHTML = '';
-
-                        importedData.forEach(msgData => {
-                            const message = createMessage(msgData.content, msgData.role);
-                            message.timestamp = msgData.timestamp;
-                            renderMessage(message);
-                        });
-                    } catch (error) {
-                        alert('檔案格式錯誤');
-                    }
-                };
-                reader.readAsText(file);
-            };
-
-            const escapeHTML = str => str.replace(/[&<>"']/g, m =>
-                ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
-
-            const toggleLoading = (show) => {
-                dom.loading.classList.toggle('hidden', !show);
-                dom.userInput.disabled = show;
-            };
-
-            const toggleTheme = () => {
-                state.isDarkMode = !state.isDarkMode;
-                document.body.classList.toggle('dark-mode', state.isDarkMode);
-            };
-
-            const initServiceWorker = () => {
-                if ('serviceWorker' in navigator) {
-                    navigator.serviceWorker.register('service-worker.js')
-                        .catch(console.error);
-                }
-            };
-
-            return { init: () => initEvents() };
-        })();
-
-        document.addEventListener('DOMContentLoaded', ChatApp.init);
-    </script>
+            <!-- 聊天訊息區 -->
+            <div class="chat-messages" id="chat-messages">
+                <!-- 初始消息由 JS 控制 -->
+            </div>
+            <!-- 輸入區 -->
+            <div class="chat-input-area">
+                <textarea id="user-input" placeholder="請先連線 API..." rows="1" class="chat-disabled" disabled></textarea>
+                <button id="send-button" title="傳送訊息" class="chat-disabled" disabled><i class="fas fa-paper-plane"></i></button>
+            </div>
+        </div>
+    </div>
+    <!-- 將 script 放在 body 結尾 -->
+    <script src="script.js"></script>
 </body>
 </html>
