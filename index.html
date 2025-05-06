@@ -3,84 +3,100 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Grok Web Chat V7 (Multi-Session)</title> <!-- 更新標題 -->
+    <title>AI Web Chat (Enhanced)</title>
     <link rel="stylesheet" href="style.css">
-    <!-- Font Awesome -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" integrity="sha512-iecdLmaskl7CVkqkXNQ/ZH/XLlvWZOJyj7Yy7tcenmpD1ypASozpmT/E0iPtmFIB46ZmdtAc9eNBvH0H/ZpiBw==" crossorigin="anonymous" referrerpolicy="no-referrer" />
-    <!-- Marked.js -->
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-    <!-- DOMPurify -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.0.6/purify.min.js"></script>
 </head>
 <body>
     <div class="chat-container">
-        <!-- 側邊欄 -->
+        <!-- Sidebar -->
         <div class="sidebar" id="sidebar">
-            <h2><i class="fa-solid fa-robot"></i> Grok Chat</h2>
+            <h2><i class="fa-solid fa-robot"></i> AI Chat</h2>
             <hr>
 
             <!-- API Key Section -->
             <div class="api-section">
                 <label for="api-key-input"><i class="fas fa-key"></i> API 金鑰:</label>
-                <input type="password" id="api-key-input" placeholder="請輸入您的 xAI API 金鑰">
+                <input type="password" id="api-key-input" placeholder="輸入 API 金鑰">
                 <button id="connect-api-button" title="儲存金鑰並測試連線"><i class="fas fa-plug"></i> 連線</button>
                 <small id="api-status" class="api-status-message">請輸入金鑰並連線</small>
                 <button id="clear-api-key-button" title="清除已儲存的金鑰" style="display: none;"><i class="fas fa-eraser"></i> 清除金鑰</button>
             </div>
             <hr>
 
+            <!-- Current Session Settings -->
+            <div class="session-settings-section">
+                <h3><i class="fas fa-cog"></i> 目前聊天設定</h3>
+                <div>
+                    <label for="user-name-input"><i class="fas fa-user"></i> 您的扮演名稱:</label>
+                    <input type="text" id="user-name-input" placeholder="例如：主角A">
+                </div>
+                <div>
+                    <label for="system-prompt-input"><i class="fas fa-scroll"></i> 劇本/世界觀/角色設定:</label>
+                    <textarea id="system-prompt-input" rows="5" placeholder="輸入故事背景、AI角色設定等..."></textarea>
+                    <small>提示: "請務必全程使用繁體中文回答。" 會自動附加到劇本末尾。</small>
+                </div>
+                <button id="save-session-settings-button" title="儲存目前聊天設定"><i class="fas fa-save"></i> 儲存設定</button>
+            </div>
+            <hr>
+
+
              <!-- Chat Session List Section -->
              <div class="session-section">
                  <div class="session-header">
-                     <label><i class="fas fa-history"></i> 聊天記錄</label>
+                     <label for="chat-session-list"><i class="fas fa-history"></i> 聊天記錄</label>
                      <button id="new-chat-button" title="新增聊天"><i class="fas fa-plus"></i></button>
                  </div>
                  <ul id="chat-session-list">
-                     <!-- 聊天記錄列表會動態加載到這裡 -->
-                     <!-- <li><button class="session-button active" data-session-id="...">聊天 1</button></li> -->
+                     <!-- Sessions are dynamically loaded -->
                  </ul>
              </div>
              <hr>
 
-
-            <label for="model-selector"><i class="fas fa-cogs"></i> 選擇模型:</label>
-            <select id="model-selector" title="選擇要對話的 Grok 模型">
-                 <option value="grok-3-mini-beta" selected>Grok 3 Mini (Beta)</option>
-                 <option value="grok-3-latest">Grok 3 Latest</option>
-                 <option value="grok-3-fast-beta">Grok 3 Fast (Beta)</option>
-                 <option value="grok-3-beta">Grok 3 (Beta)</option>
-                 <option value="grok-2-1212">Grok 2 (1212)</option>
+            <!-- Model Selector -->
+            <label for="model-selector"><i class="fas fa-brain"></i> 選擇模型:</label>
+            <select id="model-selector" title="選擇要對話的 AI 模型">
+                 <!-- Options populated by script.js -->
             </select>
+            <hr>
+
+            <!-- Action Buttons -->
+            <button id="summarize-chat-button" title="手動摘要目前對話"><i class="fas fa-book-reader"></i> 手動摘要對話</button>
             <button id="export-button" title="匯出目前對話 (JSON)"><i class="fas fa-download"></i> 匯出對話</button>
             <button id="import-button" title="匯入對話 (建立新聊天)"><i class="fas fa-upload"></i> 匯入對話</button>
             <input type="file" id="import-file-input" accept=".json" style="display: none;">
-            <button id="delete-current-chat-button" title="刪除目前聊天記錄"><i class="fas fa-trash-alt"></i> 刪除目前聊天</button> <!-- 修改按鈕文字和 ID -->
+            <button id="delete-current-chat-button" title="刪除目前聊天記錄"><i class="fas fa-trash-alt"></i> 刪除目前聊天</button>
             <hr>
+
+            <!-- Theme Toggle -->
             <button id="theme-toggle-button" title="切換淺色/深色模式"><i class="fas fa-sun"></i> 切換主題</button>
 
+            <!-- Close Sidebar Button (Mobile Only) -->
              <button id="close-sidebar-button" class="mobile-only close-button" title="關閉選單"><i class="fas fa-times"></i></button>
         </div>
-        <!-- 遮罩層 -->
+
+        <!-- Sidebar Overlay (for mobile view) -->
         <div class="sidebar-overlay" id="sidebar-overlay"></div>
-        <!-- 主要聊天區 -->
+
+        <!-- Main Chat Area -->
         <div class="main-chat-area">
-            <!-- 手機版 Header -->
             <div class="mobile-header mobile-only">
                 <button id="menu-toggle-button" title="開啟選單"><i class="fas fa-bars"></i></button>
-                <span class="mobile-title" id="mobile-chat-title">Grok Chat</span> <!-- 添加 ID 以顯示當前聊天名稱 -->
+                <span class="mobile-title" id="mobile-chat-title">AI Chat</span>
             </div>
-            <!-- 聊天訊息區 -->
+
             <div class="chat-messages" id="chat-messages">
-                <!-- 初始消息由 JS 控制 -->
+                <!-- Messages are dynamically loaded -->
             </div>
-            <!-- 輸入區 -->
+
             <div class="chat-input-area">
                 <textarea id="user-input" placeholder="請先連線 API..." rows="1" class="chat-disabled" disabled></textarea>
-                <button id="send-button" title="傳送訊息" class="chat-disabled" disabled><i class="fas fa-paper-plane"></i></button>
+                <button id="send-button" title="傳送訊息 (Enter)" class="chat-disabled" disabled><i class="fas fa-paper-plane"></i></button>
             </div>
         </div>
     </div>
-    <!-- 將 script 放在 body 結尾 -->
     <script src="script.js"></script>
 </body>
 </html>
