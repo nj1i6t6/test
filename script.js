@@ -1,316 +1,995 @@
+/**
+ * AI Web Chat - Enhanced for Roleplay
+ * Features: Grok/Gemini support, User Persona, System Prompt, Summarization, Regenerate.
+ */
 document.addEventListener('DOMContentLoaded', () => {
-    // --- 配置區域 ---
-    // 移除硬編碼 API Key
-    const API_URL_CHAT = 'https://api.x.ai/v1/chat/completions';
-    const API_URL_MODELS = 'https://api.x.ai/v1/models'; // 用於測試連線
-    let currentModel = 'grok-3-mini-beta';
-    let apiKey = null; // 用於儲存驗證後的 API Key
-    const LOCAL_STORAGE_KEY_SESSIONS = 'grokChatSessions';     // 儲存所有會話
-    const LOCAL_STORAGE_KEY_ACTIVE_ID = 'grokLastActiveSessionId'; // 儲存上次活躍的 ID
-    const LOCAL_STORAGE_KEY_API_KEY = 'grokApiKey';
-    const LOCAL_STORAGE_KEY_MODEL = 'selectedModel';
-    const LOCAL_STORAGE_KEY_THEME = 'theme';
-
-
-    // --- DOM 元素獲取 ---
-    const chatMessages = document.getElementById('chat-messages');
-    const userInput = document.getElementById('user-input');
-    const sendButton = document.getElementById('send-button');
-    const modelSelector = document.getElementById('model-selector');
-    const exportButton = document.getElementById('export-button');
-    const importButton = document.getElementById('import-button');
-    const importFileInput = document.getElementById('import-file-input');
-    // const clearButton = document.getElementById('clear-button'); // 這個按鈕功能改變了
-    const deleteCurrentChatButton = document.getElementById('delete-current-chat-button'); // 新 ID
-    const themeToggleButton = document.getElementById('theme-toggle-button');
-    const body = document.body;
-    const sidebar = document.getElementById('sidebar');
-    const menuToggleButton = document.getElementById('menu-toggle-button');
-    const sidebarOverlay = document.getElementById('sidebar-overlay');
-    const closeSidebarButton = document.getElementById('close-sidebar-button');
-    // API Key 相關元素
-    const apiKeyInput = document.getElementById('api-key-input');
-    const connectApiButton = document.getElementById('connect-api-button');
-    const apiStatus = document.getElementById('api-status');
-    const clearApiKeyButton = document.getElementById('clear-api-key-button');
-    const chatSessionList = document.getElementById('chat-session-list'); // 聊天列表 ul
-    const newChatButton = document.getElementById('new-chat-button');      // 新增聊天按鈕
-    const mobileChatTitle = document.getElementById('mobile-chat-title');  // 手機版標題
-
-
-    // --- 狀態變數 ---
-    let allSessions = [];          // 儲存所有會話對象 [{ sessionId, name, messages, createdAt, lastUpdatedAt }, ...]
-    let currentSessionId = null;   // 當前活動的會話 ID
-    let isLoading = false;
-    let messageIdCounter = 0;      // 每個會話內消息 ID 可以獨立，或全局？先用全局
-    let currentEditingMessageId = null;
-
-    // --- 初始化 ---
-    function initializeChat() {
-        if (!checkElements()) {
-             console.error("Initialization failed: One or more DOM elements not found.");
-             // 在頁面上顯示一個更友好的提示，而不是僅依賴 console
-             const initialMsg = document.querySelector('#chat-messages .system-message');
-             if (initialMsg) initialMsg.textContent = "頁面元素加載錯誤，請檢查 HTML ID 是否正確。";
-             return;
+    // --- Configuration ---
+    const config = {
+        apiUrls: {
+            grok: { chat: 'https://api.x.ai/v1/chat/completions', models: 'https://api.x.ai/v1/models' },
+            gemini: { base: 'https://generativelanguage.googleapis.com/v1beta/models/' }
+        },
+        localStorageKeys: {
+            sessions: 'aiChatSessions_v3',
+            activeId: 'aiLastActiveSessionId_v3',
+            apiKey: 'aiApiKey',
+            model: 'selectedAiModel',
+            theme: 'theme'
+        },
+        defaultModel: 'grok-3-mini-beta',
+        modelsMeta: {
+            'grok-3-mini-beta': { type: 'grok', displayName: 'Grok 3 Mini (Beta)' },
+            'grok-3-latest': { type: 'grok', displayName: 'Grok 3 Latest' },
+            'grok-3-fast-beta': { type: 'grok', displayName: 'Grok 3 Fast (Beta)' },
+            'grok-3-beta': { type: 'grok', displayName: 'Grok 3 (Beta)' },
+            'grok-2-1212': { type: 'grok', displayName: 'Grok 2 (1212)' },
+            'gemini-2.5-flash-preview-04-17': { type: 'gemini', displayName: 'Gemini 2.5 Flash Preview' },
+            'gemini-2.5-pro-exp-03-25': { type: 'gemini', displayName: 'Gemini 2.5 Pro Exp' }
+        },
+        summarizationTriggerThreshold: 30,
+        messagesToKeepAfterSummary: 20,
+        defaultSystemPromptIfEmpty: "", // User can set their own system prompt
+        // forceTraditionalChineseSuffix: "請務必全程使用繁體中文回答。", // REMOVED
+        elements: {
+            chatMessages: document.getElementById('chat-messages'),
+            userInput: document.getElementById('user-input'),
+            sendButton: document.getElementById('send-button'),
+            modelSelector: document.getElementById('model-selector'),
+            exportButton: document.getElementById('export-button'),
+            importButton: document.getElementById('import-button'),
+            importFileInput: document.getElementById('import-file-input'),
+            deleteCurrentChatButton: document.getElementById('delete-current-chat-button'),
+            themeToggleButton: document.getElementById('theme-toggle-button'),
+            body: document.body,
+            sidebar: document.getElementById('sidebar'),
+            menuToggleButton: document.getElementById('menu-toggle-button'),
+            sidebarOverlay: document.getElementById('sidebar-overlay'),
+            closeSidebarButton: document.getElementById('close-sidebar-button'),
+            apiKeyInput: document.getElementById('api-key-input'),
+            connectApiButton: document.getElementById('connect-api-button'),
+            apiStatus: document.getElementById('api-status'),
+            clearApiKeyButton: document.getElementById('clear-api-key-button'),
+            chatSessionList: document.getElementById('chat-session-list'),
+            newChatButton: document.getElementById('new-chat-button'),
+            mobileChatTitle: document.getElementById('mobile-chat-title'),
+            userNameInput: document.getElementById('user-name-input'),
+            systemPromptInput: document.getElementById('system-prompt-input'),
+            saveSessionSettingsButton: document.getElementById('save-session-settings-button'),
+            summarizeChatButton: document.getElementById('summarize-chat-button'),
         }
-        loadTheme();
-        setupModelSelector();
-        loadAllSessions();      // **加載所有會話列表**
-        renderSessionList();    // **渲染側邊欄列表**
-        loadInitialSession();   // **加載初始會話**
-        loadAndVerifyApiKey();
-        adjustTextareaHeight();
-        setupEventListeners();
-        console.log("Chat initialized with multi-session support.");
-    }
+    };
 
-    function checkElements() {
-        const elementsToCheck = [chatMessages, userInput, sendButton, modelSelector, exportButton, importButton, importFileInput, /*clearButton,*/ deleteCurrentChatButton, themeToggleButton, body, sidebar, menuToggleButton, sidebarOverlay, closeSidebarButton, apiKeyInput, connectApiButton, apiStatus, clearApiKeyButton, chatSessionList, newChatButton, mobileChatTitle];
-        const missingElements = elementsToCheck.filter(el => !el);
-        if (missingElements.length > 0) { console.error("Missing DOM elements:", missingElements); return false; }
-        return true;
-    }
+    // --- State Management ---
+    const state = {
+        apiKey: null,
+        sessions: [],
+        activeSessionId: null,
+        currentModel: config.defaultModel,
+        currentTheme: 'light',
+        isLoading: false,
+        isSummarizing: false,
+        currentEditingMessageId: null,
+        messageIdCounter: 0
+    };
 
-    // --- localStorage & Session Management ---
-    function saveAllSessions() {
-        try {
-            // 更新當前會話的 lastUpdatedAt
-            const currentSession = findSessionById(currentSessionId);
-            if (currentSession) {
-                currentSession.lastUpdatedAt = Date.now();
-            }
-             // 按最後更新時間降序排序 (最新的在前面)
-             allSessions.sort((a, b) => (b.lastUpdatedAt || b.createdAt) - (a.lastUpdatedAt || a.createdAt));
-
-            localStorage.setItem(LOCAL_STORAGE_KEY_SESSIONS, JSON.stringify(allSessions));
-            localStorage.setItem(LOCAL_STORAGE_KEY_ACTIVE_ID, currentSessionId); // 保存當前活躍 ID
-        } catch (e) { console.error("Error saving sessions to localStorage:", e); }
-    }
-
-    function loadAllSessions() {
-        const savedSessions = localStorage.getItem(LOCAL_STORAGE_KEY_SESSIONS);
-        if (savedSessions) {
+    // --- Storage Module (LocalStorage interaction) ---
+    const storage = {
+        saveSessions: () => {
             try {
-                allSessions = JSON.parse(savedSessions);
-                // 基本驗證
-                if (!Array.isArray(allSessions) || !allSessions.every(s => s.sessionId && s.name && Array.isArray(s.messages))) {
-                    console.error("Invalid session data format in localStorage. Clearing.");
-                    allSessions = [];
-                } else {
-                     // 按最後更新時間排序，確保列表順序正確
-                    allSessions.sort((a, b) => (b.lastUpdatedAt || b.createdAt) - (a.lastUpdatedAt || a.createdAt));
-                    console.log("Sessions loaded from localStorage.");
+                const activeSession = state.sessions.find(s => s.sessionId === state.activeSessionId);
+                if (activeSession) {
+                    activeSession.lastUpdatedAt = Date.now();
+                    activeSession.userName = activeSession.userName || '';
+                    activeSession.systemPrompt = activeSession.systemPrompt || '';
+                    activeSession.currentSummary = activeSession.currentSummary || '';
                 }
-            } catch (e) { console.error("Error parsing sessions from localStorage:", e); allSessions = []; }
-        }
-        // 如果加載後為空，創建一個初始會話
-        if (allSessions.length === 0) {
-            handleNewChat(false); // 首次創建不觸發保存和渲染列表
-            console.log("No sessions found, created initial chat.");
-        }
-    }
-
-    function loadInitialSession() {
-        const lastActiveId = localStorage.getItem(LOCAL_STORAGE_KEY_ACTIVE_ID);
-        // 優先加載上次活躍的，其次加載列表中的第一個（最新的），如果列表為空則不加載
-        const sessionToLoad = findSessionById(lastActiveId) || allSessions[0];
-
-        if (sessionToLoad) {
-            loadSession(sessionToLoad.sessionId);
-        } else {
-            // 理論上 loadAllSessions 會確保至少有一個 session，除非創建失敗
-            console.warn("No session available to load initially.");
-             // 可以顯示一個提示信息
-             chatMessages.innerHTML = ''; // 確保清空
-             displayMessage('system', '點擊 "+" 新增聊天開始對話', `system-init`);
-        }
-    }
-
-    function findSessionById(sessionId) {
-        return allSessions.find(s => s.sessionId === sessionId);
-    }
-
-    function findMessageById(sessionId, messageId) {
-        const session = findSessionById(sessionId);
-        return session?.messages.find(msg => msg.id === messageId);
-    }
-
-    function findMessageIndexById(sessionId, messageId) {
-         const session = findSessionById(sessionId);
-         return session?.messages.findIndex(msg => msg.id === messageId) ?? -1;
-     }
-
-
-    function renderSessionList() {
-        chatSessionList.innerHTML = ''; // 清空列表
-        if (allSessions.length === 0) {
-            // 可以顯示一個 "無聊天記錄" 的提示
-             const li = document.createElement('li');
-             li.textContent = "無聊天記錄";
-             li.style.padding = '10px';
-             li.style.textAlign = 'center';
-             li.style.color = 'var(--text-muted)';
-             li.style.fontSize = '0.8em';
-             chatSessionList.appendChild(li);
-            return;
-        }
-
-        allSessions.forEach(session => {
-            const li = document.createElement('li');
-            const button = document.createElement('button');
-            button.classList.add('session-button');
-            button.textContent = session.name || `聊天 ${session.sessionId.slice(-4)}`; // 顯示名稱或部分 ID
-            button.dataset.sessionId = session.sessionId;
-            if (session.sessionId === currentSessionId) {
-                button.classList.add('active'); // 標記當前活動項
-            }
-            button.addEventListener('click', () => {
-                if (currentEditingMessageId) { // 如果正在編輯，提示用戶
-                    if (!confirm("您正在編輯訊息，切換聊天將丟失未保存的更改。確定要切換嗎？")) {
-                        return;
+                state.sessions.sort((a, b) => (b.lastUpdatedAt || b.createdAt) - (a.lastUpdatedAt || a.createdAt));
+                localStorage.setItem(config.localStorageKeys.sessions, JSON.stringify(state.sessions));
+                localStorage.setItem(config.localStorageKeys.activeId, state.activeSessionId);
+            } catch (e) { console.error("Error saving sessions:", e); ui.showSystemMessage("保存會話失敗。", `error-storage-${Date.now()}`, true); }
+        },
+        loadSessions: () => {
+            const savedData = localStorage.getItem(config.localStorageKeys.sessions);
+            if (savedData) {
+                try {
+                    const loadedSessions = JSON.parse(savedData);
+                    if (Array.isArray(loadedSessions)) {
+                        state.sessions = loadedSessions.map(s => ({
+                            ...s,
+                            userName: s.userName || '',
+                            systemPrompt: s.systemPrompt || '',
+                            currentSummary: s.currentSummary || '',
+                            messages: Array.isArray(s.messages) ? s.messages : []
+                        }));
+                        state.sessions.sort((a, b) => (b.lastUpdatedAt || b.createdAt) - (a.lastUpdatedAt || a.createdAt));
+                        return true;
                     }
-                     cancelEdit(currentEditingMessageId); // 取消編輯
+                } catch (e) { console.error("Error parsing sessions:", e); state.sessions = []; }
+            }
+            return false;
+        },
+        saveActiveSessionId: () => localStorage.setItem(config.localStorageKeys.activeId, state.activeSessionId),
+        loadActiveSessionId: () => localStorage.getItem(config.localStorageKeys.activeId),
+        saveApiKey: () => localStorage.setItem(config.localStorageKeys.apiKey, state.apiKey),
+        loadApiKey: () => localStorage.getItem(config.localStorageKeys.apiKey),
+        removeApiKey: () => localStorage.removeItem(config.localStorageKeys.apiKey),
+        saveTheme: () => localStorage.setItem(config.localStorageKeys.theme, state.currentTheme),
+        loadTheme: () => localStorage.getItem(config.localStorageKeys.theme) || 'light',
+        saveModel: () => localStorage.setItem(config.localStorageKeys.model, state.currentModel),
+        loadModel: () => {
+            const savedModel = localStorage.getItem(config.localStorageKeys.model);
+            return (savedModel && config.modelsMeta[savedModel]) ? savedModel : config.defaultModel;
+        }
+    };
+
+    // --- UI Module ---
+    const ui = {
+        getElement: (key) => config.elements[key],
+        populateModelSelector: () => {
+            const selector = ui.getElement('modelSelector');
+            if (!selector) return;
+            selector.innerHTML = '';
+            for (const modelId in config.modelsMeta) {
+                const option = document.createElement('option');
+                option.value = modelId;
+                option.textContent = config.modelsMeta[modelId].displayName;
+                selector.appendChild(option);
+            }
+        },
+        renderMessage: (message) => {
+            const { role, content, id, isError = false, edited = false } = message;
+            const messageDiv = document.createElement('div');
+            messageDiv.classList.add('message');
+            if (id) messageDiv.dataset.id = id;
+            const contentContainer = document.createElement('div');
+            contentContainer.classList.add('message-content');
+
+            switch (role) {
+                case 'user':
+                    messageDiv.classList.add('user-message');
+                    contentContainer.textContent = content;
+                    break;
+                case 'assistant':
+                    messageDiv.classList.add('assistant-message');
+                    try {
+                        const rawHtml = marked.parse(content, { gfm: true, breaks: true });
+                        contentContainer.innerHTML = DOMPurify.sanitize(rawHtml, { USE_PROFILES: { html: true } });
+                    } catch (e) { contentContainer.textContent = content; }
+                    break;
+                default: return null;
+            }
+            messageDiv.appendChild(contentContainer);
+            messageDiv.dataset.originalContent = content;
+
+            if (id && (role === 'user' || role === 'assistant')) {
+                const actionsContainer = document.createElement('div');
+                actionsContainer.classList.add('message-actions');
+                let buttonsHtml = `
+                    <button class="action-button action-copy" title="複製"><i class="fas fa-copy"></i></button>
+                    <button class="action-button action-edit" title="編輯"><i class="fas fa-pencil-alt"></i></button>
+                `;
+                if (role === 'assistant') {
+                    buttonsHtml += `<button class="action-button action-regenerate" title="重新生成"><i class="fas fa-redo"></i></button>`;
                 }
-                loadSession(session.sessionId);
-                closeSidebarIfMobile();
+                buttonsHtml += `<button class="action-button action-delete" title="刪除"><i class="fas fa-trash-alt"></i></button>
+                    ${edited ? '<span class="edited-indicator" title="已編輯"><i class="fas fa-history"></i></span>' : ''}
+                `;
+                actionsContainer.innerHTML = buttonsHtml;
+                messageDiv.appendChild(actionsContainer);
+            }
+            return messageDiv;
+        },
+        renderMessages: (messages = []) => {
+            const messagesContainer = ui.getElement('chatMessages');
+            if (!messagesContainer) return;
+            messagesContainer.innerHTML = '';
+            state.messageIdCounter = 0; let maxMsgIdNum = -1;
+
+            if (messages.length === 0) {
+                ui.showSystemMessage("這個聊天是空的，開始輸入訊息吧！", `system-empty-${state.activeSessionId || 'init'}`);
+            } else {
+                messages.forEach(msg => {
+                    const messageElement = ui.renderMessage(msg);
+                    if (messageElement) {
+                        messagesContainer.appendChild(messageElement);
+                        if (msg.id) { const idNum = parseInt(String(msg.id).split('-').pop(), 10); if (!isNaN(idNum) && idNum > maxMsgIdNum) maxMsgIdNum = idNum; }
+                    } else if (msg.role === 'system') { ui.showSystemMessage(msg.content, msg.id, msg.isError); }
+                });
+                state.messageIdCounter = maxMsgIdNum >= 0 ? maxMsgIdNum + 1 : 0;
+            }
+            ui.scrollToBottom();
+        },
+        renderSessionList: () => {
+            const listContainer = ui.getElement('chatSessionList');
+            if (!listContainer) return;
+            listContainer.innerHTML = '';
+            if (state.sessions.length === 0) {
+                const emptyLi = document.createElement('li');
+                emptyLi.textContent = '沒有聊天記錄';
+                emptyLi.style.padding = '10px';
+                emptyLi.style.textAlign = 'center';
+                emptyLi.style.color = 'var(--text-muted)';
+                listContainer.appendChild(emptyLi);
+                return;
+            }
+            state.sessions.forEach(session => {
+                const li = document.createElement('li');
+                li.classList.add('session-item');
+                li.dataset.sessionId = session.sessionId;
+                if (session.sessionId === state.activeSessionId) {
+                    li.classList.add('active');
+                }
+
+                const nameSpan = document.createElement('span');
+                nameSpan.classList.add('session-name');
+                nameSpan.textContent = session.name || `聊天 ${session.sessionId.slice(-4)}`;
+                nameSpan.title = session.name || `聊天 ${session.sessionId.slice(-4)}`;
+
+                const renameButton = document.createElement('button');
+                renameButton.classList.add('session-rename-button');
+                renameButton.innerHTML = '<i class="fas fa-pencil-alt"></i>';
+                renameButton.title = '重新命名';
+
+                li.appendChild(nameSpan);
+                li.appendChild(renameButton);
+                listContainer.appendChild(li);
             });
-            li.appendChild(button);
-            chatSessionList.appendChild(li);
-        });
-    }
+        },
+        loadSessionUI: (sessionId) => {
+            const session = state.sessions.find(s => s.sessionId === sessionId);
+            if (!session) {
+                console.error("Session not found for UI load:", sessionId);
+                if (state.sessions.length > 0) {
+                    logic.activateSession(state.sessions[0].sessionId);
+                } else {
+                    events.handleNewChat();
+                }
+                return;
+            }
+            state.activeSessionId = sessionId;
+            // storage.saveActiveSessionId(); // activateSession already saves this
 
-    function loadSession(sessionId) {
-        const session = findSessionById(sessionId);
-        if (!session) {
-            console.error(`Session not found: ${sessionId}`);
-             // 如果找不到，嘗試加載第一個
-             if (allSessions.length > 0) {
-                 loadSession(allSessions[0].sessionId);
-             } else {
-                 handleNewChat(); // 如果連第一個都沒有，創建新的
-             }
-            return;
-        }
-
-        currentSessionId = sessionId;
-        localStorage.setItem(LOCAL_STORAGE_KEY_ACTIVE_ID, currentSessionId); // 保存活躍 ID
-
-        // 更新側邊欄高亮
-        document.querySelectorAll('#chat-session-list .session-button').forEach(btn => {
-            btn.classList.toggle('active', btn.dataset.sessionId === currentSessionId);
-        });
-
-         // 更新手機版標題
-         mobileChatTitle.textContent = session.name || `聊天 ${session.sessionId.slice(-4)}`;
-
-
-        // 渲染聊天消息
-        chatMessages.innerHTML = ''; // 清空
-        messageIdCounter = 0; // 重置/重新計算消息 ID 計數器 (基於加載的消息)
-        let maxMsgIdNum = -1;
-        if (session.messages && session.messages.length > 0) {
-            session.messages.forEach(message => {
-                if (['user', 'assistant'].includes(message.role)) {
-                    displayMessage(message.role, message.content, message.id);
-                     // 更新 messageIdCounter
-                     const idNum = parseInt(String(message.id).split('-')[1], 10);
-                     if (!isNaN(idNum) && idNum > maxMsgIdNum) {
-                         maxMsgIdNum = idNum;
-                     }
-                 }
-                 // 可選：加載系統消息
-                 else if (message.role === 'system' && !message.content?.startsWith("模型已切換至")) { // 避免重複顯示切換提示 (增加內容檢查)
-                    displayMessage(message.role, message.content, message.id);
-                 }
+            document.querySelectorAll('#chat-session-list li').forEach(li => {
+                li.classList.toggle('active', li.dataset.sessionId === sessionId);
             });
-             messageIdCounter = maxMsgIdNum + 1;
-        } else {
-             // 如果會話是空的，顯示提示
-             displayMessage('system', '這個聊天是空的，開始輸入訊息吧！', `system-${sessionId}`);
+            const mobileTitleEl = ui.getElement('mobileChatTitle');
+            if(mobileTitleEl) mobileTitleEl.textContent = session.name || `聊天 ${session.sessionId.slice(-4)}`;
+
+            const userNameInputEl = ui.getElement('userNameInput');
+            const systemPromptInputEl = ui.getElement('systemPromptInput');
+            if (userNameInputEl) userNameInputEl.value = session.userName || '';
+            if (systemPromptInputEl) systemPromptInputEl.value = session.systemPrompt || '';
+
+            ui.renderMessages(session.messages);
+        },
+        updateChatInputState: (enabled, customPlaceholder = null) => {
+            const userInputEl = ui.getElement('userInput');
+            const sendButtonEl = ui.getElement('sendButton');
+            if (!userInputEl || !sendButtonEl) return;
+
+            const shouldEnable = enabled && !!state.apiKey;
+            userInputEl.disabled = !shouldEnable;
+            sendButtonEl.disabled = !shouldEnable;
+            userInputEl.classList.toggle('chat-disabled', !shouldEnable);
+            sendButtonEl.classList.toggle('chat-disabled', !shouldEnable);
+
+            if (customPlaceholder !== null) {
+                userInputEl.placeholder = customPlaceholder;
+            } else if (state.apiKey) {
+                 userInputEl.placeholder = shouldEnable ? "輸入訊息..." : "正在連線或連線失敗，請稍候或檢查金鑰...";
+            } else {
+                 userInputEl.placeholder = "請先在側邊欄輸入並連線 API...";
+            }
+            sendButtonEl.title = shouldEnable ? "傳送訊息" : "無法傳送";
+        },
+        showSystemMessage: (content, id, isError = false) => {
+            if (!id) id = `system-msg-${Date.now()}`;
+            ui.removeElementById(id);
+            const messagesContainer = ui.getElement('chatMessages');
+            if (!messagesContainer) return;
+
+            const systemMessageDiv = document.createElement('div');
+            systemMessageDiv.classList.add('system-message');
+            if (isError) systemMessageDiv.classList.add('error-message');
+            systemMessageDiv.id = id;
+            systemMessageDiv.textContent = content;
+            messagesContainer.appendChild(systemMessageDiv);
+            ui.scrollToBottom();
+        },
+        showLoadingIndicator: (loadingId, text = "AI 思考中...") => {
+            ui.removeElementById(loadingId);
+            const messagesContainer = ui.getElement('chatMessages');
+            if (!messagesContainer) return null;
+            const loadingDiv = document.createElement('div');
+            loadingDiv.classList.add('message', 'loading-message');
+            loadingDiv.id = loadingId;
+            loadingDiv.innerHTML = `<i class="fas fa-spinner fa-spin"></i> ${text}`;
+            messagesContainer.appendChild(loadingDiv);
+            ui.scrollToBottom();
+            return loadingDiv;
+        },
+        removeElementById: (id) => {
+            const element = document.getElementById(id);
+            if (element) element.remove();
+        },
+        scrollToBottom: () => {
+            const messagesContainer = ui.getElement('chatMessages');
+            if (messagesContainer) messagesContainer.scrollTop = messagesContainer.scrollHeight;
+        },
+        updateApiStatus: (message, type = "") => {
+            const apiStatusEl = ui.getElement('apiStatus');
+            const clearApiKeyButtonEl = ui.getElement('clearApiKeyButton');
+            if (!apiStatusEl) return;
+            apiStatusEl.textContent = message;
+            apiStatusEl.className = 'api-status-message';
+            if (type) apiStatusEl.classList.add(`status-${type}`);
+            if (clearApiKeyButtonEl) clearApiKeyButtonEl.style.display = state.apiKey ? 'block' : 'none';
+        },
+        updateThemeUI: () => {
+            const body = ui.getElement('body');
+            const themeToggleButton = ui.getElement('themeToggleButton');
+            if (!body || !themeToggleButton) return;
+            if (state.currentTheme === 'dark') {
+                body.classList.add('dark-mode');
+                themeToggleButton.innerHTML = '<i class="fas fa-moon"></i> 切換主題';
+            } else {
+                body.classList.remove('dark-mode');
+                themeToggleButton.innerHTML = '<i class="fas fa-sun"></i> 切換主題';
+            }
+        },
+        adjustTextareaHeight: (textarea = ui.getElement('userInput')) => {
+            if (!textarea) return;
+            textarea.style.height = 'auto';
+            textarea.style.height = `${textarea.scrollHeight}px`;
+        },
+        showEditUI: (messageElement, initialContent) => { /* ... */ },
+        hideEditUI: (messageElement) => { /* ... */ },
+        hideAllMessageActions: () => { /* ... */ },
+        adjustTextareaHeightForEdit: (textarea) => { /* ... */ },
+        closeSidebarIfMobile: () => {
+            const body = ui.getElement('body');
+            if (window.innerWidth <= 768 && body && body.classList.contains('sidebar-open')) {
+                body.classList.remove('sidebar-open');
+            }
+        },
+        hideAllRenameButtons: () => { /* ... */ }
+    };
+
+    // --- API Module ---
+    const api = {
+        getApiConfigForModel: (modelId) => {
+            const modelMeta = config.modelsMeta[modelId];
+            if (!modelMeta) return null;
+            if (modelMeta.type === 'grok') {
+                return { type: 'grok', chatUrl: config.apiUrls.grok.chat, modelsUrl: config.apiUrls.grok.models };
+            } else if (modelMeta.type === 'gemini') {
+                return { type: 'gemini', chatUrl: `${config.apiUrls.gemini.base}${modelId}:generateContent` };
+            }
+            return null;
+        },
+        testApiKey: async (keyToTest) => {
+            // ... (same as before) ...
+            if (!keyToTest) { ui.updateApiStatus("API 金鑰不能為空。", "error"); return false; }
+            const modelToTestWith = state.currentModel;
+            const apiConfig = api.getApiConfigForModel(modelToTestWith);
+            if (!apiConfig) { ui.updateApiStatus(`找不到模型 ${modelToTestWith} 的 API 設定。`, "error"); return false; }
+            ui.updateApiStatus(`正在測試 ${config.modelsMeta[modelToTestWith]?.displayName || modelToTestWith} 金鑰...`, "testing");
+            try {
+                let response;
+                if (apiConfig.type === 'grok') {
+                    response = await fetch(apiConfig.modelsUrl, { headers: { 'Authorization': `Bearer ${keyToTest}` } });
+                } else if (apiConfig.type === 'gemini') {
+                    const testModelUrl = `${config.apiUrls.gemini.base}${modelToTestWith}?key=${keyToTest}`;
+                    response = await fetch(testModelUrl);
+                } else { throw new Error("Unsupported API type for testing."); }
+                if (response.ok) {
+                    ui.updateApiStatus(`${config.modelsMeta[modelToTestWith]?.displayName || modelToTestWith} 金鑰有效。`, "success"); return true;
+                } else {
+                    let errorMsg = `API 金鑰測試失敗 (${response.status}). `;
+                    try { const errorData = await response.json(); errorMsg += errorData.error?.message || JSON.stringify(errorData.error || errorData); } catch (e) { errorMsg += "無法解析錯誤回應。"; }
+                    if (response.status === 401 || response.status === 403) errorMsg += " 請檢查您的金鑰權限。";
+                    ui.updateApiStatus(errorMsg, "error"); return false;
+                }
+            } catch (error) { console.error("API Key test connection error:", error); ui.updateApiStatus(`連線錯誤: ${error.message}`, "error"); return false; }
+        },
+        callApi: async (isRegeneration = false, messageToRegenerateId = null) => {
+            const userInputEl = ui.getElement('userInput');
+            let userText = userInputEl ? userInputEl.value.trim() : "";
+            const currentSession = logic.getCurrentSession();
+
+            if (!currentSession) { ui.showSystemMessage('錯誤：沒有活動的聊天會話。', `error-no-session-${logic.generateMessageId()}`, true); return; }
+            if (!state.apiKey) { ui.showSystemMessage('請先連線 API 金鑰。', `error-no-api-${logic.generateMessageId()}`, true); events.handleSidebarToggle(true); return; }
+            if (state.isLoading || state.isSummarizing) return;
+            if (!isRegeneration && !userText) return;
+
+            const currentModelId = state.currentModel;
+            const apiConfig = api.getApiConfigForModel(currentModelId);
+            if (!apiConfig) { ui.showSystemMessage(`錯誤：找不到模型 ${currentModelId} 的 API 配置。`, `error-no-apicfg-${logic.generateMessageId()}`, true); return; }
+
+            state.isLoading = true; ui.updateChatInputState(false);
+            let messagesForContext = [...currentSession.messages];
+
+            if (isRegeneration && messageToRegenerateId) {
+                const assistantMsgIndex = messagesForContext.findIndex(msg => msg.id === messageToRegenerateId);
+                if (assistantMsgIndex > 0 && messagesForContext[assistantMsgIndex - 1].role === 'user') {
+                    messagesForContext.splice(assistantMsgIndex);
+                    const lastUserPrompt = messagesForContext[messagesForContext.length - 1];
+                    userText = lastUserPrompt.content;
+                } else {
+                    console.error("Regeneration error: Could not find valid preceding user message.");
+                    ui.showSystemMessage('重新生成失敗：找不到有效的用戶提示。', `error-regen-prompt-${logic.generateMessageId()}`, true);
+                    state.isLoading = false; ui.updateChatInputState(true); return;
+                }
+            } else {
+                const userMessageId = logic.generateMessageId();
+                const userMessage = { role: 'user', content: userText, id: userMessageId, timestamp: Date.now() };
+                logic.addMessageToCurrentSession(userMessage);
+                const newMessageElement = ui.renderMessage(userMessage);
+                if (newMessageElement && ui.getElement('chatMessages')) ui.getElement('chatMessages').appendChild(newMessageElement);
+                if(userInputEl) userInputEl.value = '';
+                ui.adjustTextareaHeight(userInputEl);
+            }
+
+            ui.scrollToBottom();
+            const loadingId = `loading-${logic.generateMessageId()}`;
+            ui.showLoadingIndicator(loadingId, isRegeneration ? "AI 重新思考中..." : "AI 思考中...");
+
+            try {
+                // System prompt is now purely what the user types in the session settings
+                let systemPromptText = currentSession.systemPrompt || config.defaultSystemPromptIfEmpty;
+                // REMOVED: Logic to append forceTraditionalChineseSuffix
+
+                let contextMessagesToSend = [];
+                // Grok: Add system prompt if available
+                if (systemPromptText && apiConfig.type === 'grok') {
+                    contextMessagesToSend.push({ role: 'system', content: systemPromptText });
+                }
+                // Gemini: System prompt handled differently (see below)
+
+                if (currentSession.currentSummary) {
+                    contextMessagesToSend.push({ role: apiConfig.type === 'gemini' ? 'user' : 'system', content: `先前對話摘要:\n${currentSession.currentSummary}` });
+                    if (apiConfig.type === 'gemini') contextMessagesToSend.push({role: 'model', content: '明白了，摘要已收到。'});
+                }
+
+                messagesForContext.forEach(msg => {
+                    if (['user', 'assistant'].includes(msg.role)) {
+                        let contentForApi = msg.content;
+                        if (msg.role === 'user' && currentSession.userName) {
+                            contentForApi = `${currentSession.userName}: ${msg.content}`;
+                        }
+                        contextMessagesToSend.push({
+                            role: (apiConfig.type === 'gemini' && msg.role === 'assistant') ? 'model' : msg.role,
+                            content: contentForApi
+                        });
+                    }
+                });
+
+                let requestBody;
+                let apiUrl = apiConfig.chatUrl;
+                let headers = { 'Content-Type': 'application/json' };
+
+                if (apiConfig.type === 'grok') {
+                    requestBody = { messages: contextMessagesToSend, model: currentModelId, stream: false, temperature: 0.7 };
+                    headers['Authorization'] = `Bearer ${state.apiKey}`;
+                } else if (apiConfig.type === 'gemini') {
+                    apiUrl = `${apiConfig.chatUrl}?key=${state.apiKey}`;
+                    let geminiContents = [];
+
+                    // If systemPromptText exists, and it's the start of the conversation,
+                    // prepend it to the first user message for Gemini.
+                    // Otherwise, can inject as a separate user/model turn if preferred for non-first turns.
+                    const isFirstActualUserMessage = messagesForContext.length === 1 && messagesForContext[0].role === 'user' && !currentSession.currentSummary;
+
+                    if (systemPromptText) {
+                        if (isFirstActualUserMessage && contextMessagesToSend.length > 0 && contextMessagesToSend[0].role === 'user') {
+                             // Prepend to the *first* user message in contextMessagesToSend
+                            const firstUserMsgApi = contextMessagesToSend.shift(); // Take it out
+                            geminiContents.push({
+                                role: 'user',
+                                parts: [{ text: systemPromptText + "\n\n" + firstUserMsgApi.content }]
+                            });
+                        } else {
+                            // Fallback: Send system prompt as its own turn if not first message or complex history
+                            geminiContents.push({ role: 'user', parts: [{ text: systemPromptText }] });
+                            geminiContents.push({ role: 'model', parts: [{ text: "好的。" }] }); // AI acknowledges
+                        }
+                    }
+                    geminiContents.push(...contextMessagesToSend.map(m => ({ role: m.role, parts: [{ text: m.content }] })));
+                    requestBody = { contents: geminiContents, generationConfig: { temperature: 0.7 }};
+                } else { throw new Error(`Unsupported API type: ${apiConfig.type}`); }
+
+                const response = await fetch(apiUrl, { method: 'POST', headers: headers, body: JSON.stringify(requestBody) });
+                ui.removeElementById(loadingId);
+
+                if (!response.ok) {
+                    // ... (error handling same as before) ...
+                    let errorText = await response.text(); let errorMessage = `API 請求失敗 (${response.status} ${response.statusText})`;
+                    try { const errorJson = JSON.parse(errorText); errorMessage += `: ${errorJson.error?.message || errorJson.message || JSON.stringify(errorJson)}`; } catch (e) { errorMessage += `\n回應: ${errorText}`; }
+                    if (response.status === 401 || response.status === 403) { errorMessage += " 金鑰可能已失效或無效。"; logic.clearApiKey(false); }
+                    console.error(`API Error (${apiConfig.type.toUpperCase()}):`, errorMessage); ui.showSystemMessage(errorMessage, `error-api-${logic.generateMessageId()}`, true);
+                } else {
+                    const data = await response.json();
+                    let assistantReply = null;
+                    if (apiConfig.type === 'grok') {
+                        assistantReply = data.choices?.[0]?.message?.content;
+                    } else if (apiConfig.type === 'gemini') {
+                        assistantReply = data.candidates?.[0]?.content?.parts?.[0]?.text;
+                        if (data.promptFeedback && data.promptFeedback.blockReason) {
+                            assistantReply = `[內容被封鎖: ${data.promptFeedback.blockReason}] ${assistantReply || ""}`;
+                            console.warn("Gemini content blocked:", data.promptFeedback);
+                        }
+                    }
+
+                    if (assistantReply !== null) {
+                        const assistantMessageId = logic.generateMessageId();
+                        const assistantMessage = { role: 'assistant', content: assistantReply, id: assistantMessageId, timestamp: Date.now() };
+                        logic.addMessageToCurrentSession(assistantMessage);
+                        const newAssistantMsgElement = ui.renderMessage(assistantMessage);
+                        if(newAssistantMsgElement && ui.getElement('chatMessages')) ui.getElement('chatMessages').appendChild(newAssistantMsgElement);
+                        ui.scrollToBottom();
+                        if (!isRegeneration) events.handleAutoSummarizationCheck();
+                    } else {
+                        ui.showSystemMessage('API 回應格式無效。', `error-api-format-${logic.generateMessageId()}`, true);
+                        console.error("Invalid API response format:", data);
+                    }
+                }
+            } catch (error) {
+                ui.removeElementById(loadingId);
+                console.error("Client-side API call error:", error);
+                ui.showSystemMessage(`客戶端錯誤: ${error.message}`, `error-client-${logic.generateMessageId()}`, true);
+            } finally {
+                state.isLoading = false; ui.updateChatInputState(true);
+                if (!isRegeneration && userInputEl) userInputEl.focus();
+            }
+        },
+        summarizeConversation: async (sessionToSummarize) => {
+            // ... (same as before, but system prompt for summary is also now just user's input) ...
+            if (!sessionToSummarize || state.isSummarizing || !state.apiKey) return null;
+            if (sessionToSummarize.messages.filter(m => ['user', 'assistant'].includes(m.role)).length < config.messagesToKeepAfterSummary + 5) {
+                console.log("Conversation too short to summarize meaningfully."); return sessionToSummarize.currentSummary || null;
+            }
+            state.isSummarizing = true;
+            ui.updateChatInputState(false, "正在摘要對話，請稍候...");
+            ui.showSystemMessage("正在摘要對話...", `system-summarizing-${Date.now()}`);
+            const apiConfig = api.getApiConfigForModel(state.currentModel);
+            if (!apiConfig) {
+                ui.showSystemMessage("摘要失敗：找不到模型配置。", `error-summary-cfg`, true);
+                state.isSummarizing = false; ui.updateChatInputState(true); ui.removeElementById(`system-summarizing-${Date.now()}`); return null;
+            }
+            try {
+                const messagesToSummarize = sessionToSummarize.messages.filter(m => ['user', 'assistant'].includes(m.role)).slice(0, -config.messagesToKeepAfterSummary);
+                if (messagesToSummarize.length < 5) {
+                    console.log("Not enough old messages to summarize."); ui.removeElementById(`system-summarizing-${Date.now()}`);
+                    state.isSummarizing = false; ui.updateChatInputState(true); return sessionToSummarize.currentSummary || null;
+                }
+                let promptForSummary = "請你扮演一個資深的對話分析師，精簡地總結以下對話的關鍵進展、主要討論點、已確認的事實、以及任何重要的角色動態或情緒變化。保持客觀和簡潔，生成的摘要將用於後續對話的上下文參考。\n\n對話記錄如下：\n";
+                messagesToSummarize.forEach(msg => { promptForSummary += `${msg.role === 'user' ? (sessionToSummarize.userName || 'User') : 'AI'}: ${msg.content}\n`; });
+                promptForSummary += "\n請提供上述對話的摘要：";
+                let requestBody; let apiUrl = apiConfig.chatUrl; let headers = { 'Content-Type': 'application/json' };
+                let summarySystemPrompt = sessionToSummarize.systemPrompt || ""; // User's general system prompt
+                // REMOVED: Logic to append forceTraditionalChineseSuffix to summarySystemPrompt
+                if (apiConfig.type === 'grok') {
+                    let summaryMessages = [];
+                    if (summarySystemPrompt) summaryMessages.push({role: 'system', content: summarySystemPrompt});
+                    summaryMessages.push({ role: 'user', content: promptForSummary });
+                    requestBody = { messages: summaryMessages, model: state.currentModel, temperature: 0.3 };
+                    headers['Authorization'] = `Bearer ${state.apiKey}`;
+                } else if (apiConfig.type === 'gemini') {
+                    apiUrl = `${apiConfig.chatUrl}?key=${state.apiKey}`;
+                    let geminiContents = [];
+                    if (summarySystemPrompt) {
+                        geminiContents.push({role: 'user', parts: [{text: summarySystemPrompt}]});
+                        geminiContents.push({role: 'model', parts: [{text: "好的。"}]});
+                    }
+                    geminiContents.push({ role: 'user', parts: [{ text: promptForSummary }] });
+                    requestBody = { contents: geminiContents, generationConfig: { temperature: 0.3 } };
+                } else { throw new Error("Unsupported API for summary."); }
+                const response = await fetch(apiUrl, { method: 'POST', headers: headers, body: JSON.stringify(requestBody) });
+                ui.removeElementById(`system-summarizing-${Date.now()}`);
+                if (!response.ok) { const errorText = await response.text(); throw new Error(`摘要 API 請求失敗 (${response.status}): ${errorText}`); }
+                const data = await response.json(); let newSummaryText = null;
+                if (apiConfig.type === 'grok' && data.choices?.[0]?.message?.content) newSummaryText = data.choices[0].message.content.trim();
+                else if (apiConfig.type === 'gemini' && data.candidates?.[0]?.content?.parts?.[0]?.text) newSummaryText = data.candidates[0].content.parts[0].text.trim();
+                if (newSummaryText) {
+                    console.log("Generated summary:", newSummaryText);
+                    sessionToSummarize.currentSummary = (sessionToSummarize.currentSummary ? sessionToSummarize.currentSummary + "\n\n---\n\n" : "") + newSummaryText;
+                    const startIndex = Math.max(0, sessionToSummarize.messages.length - config.messagesToKeepAfterSummary);
+                    sessionToSummarize.messages = sessionToSummarize.messages.slice(startIndex);
+                    storage.saveSessions();
+                    ui.showSystemMessage("對話已摘要並更新上下文。", `system-summary-done-${Date.now()}`);
+                    return sessionToSummarize.currentSummary;
+                } else { throw new Error("從 API 收到的摘要格式無效。"); }
+            } catch (error) {
+                console.error("Error during summarization:", error);
+                ui.showSystemMessage(`摘要失敗: ${error.message}`, `error-summary-${Date.now()}`, true);
+                ui.removeElementById(`system-summarizing-${Date.now()}`);
+                return sessionToSummarize.currentSummary || null;
+            } finally { state.isSummarizing = false; ui.updateChatInputState(true); }
         }
+    };
 
-        scrollToBottom();
-        console.log(`Loaded session: ${currentSessionId}`);
-    }
-
-    function generateSessionId() {
-        return `session-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
-    }
-
-    function generateMessageId() {
-         return `msg-${messageIdCounter++}`; // 全局自增 ID
-     }
-
-    function handleNewChat(render = true) { // 添加 render 參數控制是否立即渲染
-        if (currentEditingMessageId) {
-            if (!confirm("您正在編輯訊息，新增聊天將丟失未保存的更改。確定要繼續嗎？")) { return; }
-            cancelEdit(currentEditingMessageId);
+    // --- Logic Module ---
+    const logic = {
+        generateSessionId: () => `session-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+        generateMessageId: () => `msg-${state.messageIdCounter++}`,
+        getCurrentSession: () => state.sessions.find(s => s.sessionId === state.activeSessionId),
+        getCurrentSessionMessages: () => logic.getCurrentSession()?.messages || [],
+        addMessageToCurrentSession: (message) => {
+            const session = logic.getCurrentSession();
+            if (session) {
+                if (!message.id) message.id = logic.generateMessageId();
+                session.messages.push(message);
+                storage.saveSessions();
+            } else {
+                 console.error("Cannot add message: No active session.");
+                 ui.showSystemMessage("錯誤：無法新增訊息，沒有活動的聊天。", `error-addmsg-nosession-${Date.now()}`, true);
+            }
+        },
+        updateMessageInSession: (sessionId, messageId, newContent) => {
+            const session = state.sessions.find(s => s.sessionId === sessionId);
+            if (!session) return false;
+            const message = session.messages.find(m => m.id === messageId);
+            if (!message) return false;
+            message.content = newContent;
+            message.edited = true;
+            message.timestamp = Date.now();
+            storage.saveSessions();
+            return true;
+        },
+        deleteMessageFromSession: (sessionId, messageId) => {
+            const session = state.sessions.find(s => s.sessionId === sessionId);
+            if (!session) return false;
+            const messageIndex = session.messages.findIndex(m => m.id === messageId);
+            if (messageIndex === -1) return false;
+            session.messages.splice(messageIndex, 1);
+            storage.saveSessions();
+            return true;
+        },
+        deleteSession: (sessionIdToDelete) => {
+            const sessionIndex = state.sessions.findIndex(s => s.sessionId === sessionIdToDelete);
+            if (sessionIndex === -1) return false;
+            state.sessions.splice(sessionIndex, 1);
+            if (state.activeSessionId === sessionIdToDelete) {
+                state.activeSessionId = null;
+                if (state.sessions.length > 0) {
+                    logic.activateSession(state.sessions[0].sessionId);
+                } else {
+                    events.handleNewChat();
+                }
+            }
+            storage.saveSessions();
+            if (!state.activeSessionId && state.sessions.length === 0) { /* handled by newChat */ }
+            else { storage.saveActiveSessionId(); }
+            ui.renderSessionList(); // Ensure list updates even if active session didn't change
+            return true;
+        },
+        renameSession: (sessionId, newName) => {
+            const session = state.sessions.find(s => s.sessionId === sessionId);
+            if (session && newName.trim() !== "") {
+                session.name = newName.trim();
+                storage.saveSessions();
+                ui.renderSessionList();
+                if (sessionId === state.activeSessionId) {
+                    const mobileTitleEl = ui.getElement('mobileChatTitle');
+                    if(mobileTitleEl) mobileTitleEl.textContent = session.name;
+                }
+                return true;
+            }
+            return false;
+        },
+        clearApiKey: (confirmUser = true) => {
+            if (confirmUser && !confirm("確定要清除已儲存的 API 金鑰嗎？")) { return false; }
+            state.apiKey = null;
+            storage.removeApiKey();
+            if(ui.getElement('apiKeyInput')) ui.getElement('apiKeyInput').value = "";
+            ui.updateApiStatus("API 金鑰已清除。請輸入新金鑰。", "");
+            ui.updateChatInputState(false);
+            const clearApiKeyButtonEl = ui.getElement('clearApiKeyButton');
+            if (clearApiKeyButtonEl) clearApiKeyButtonEl.style.display = 'none';
+            return true;
+        },
+        saveCurrentSessionSettings: () => {
+            const currentSession = logic.getCurrentSession();
+            if (!currentSession) { alert("錯誤：沒有活動的聊天會話可儲存設定。"); return; }
+            const userNameInputEl = ui.getElement('userNameInput');
+            const systemPromptInputEl = ui.getElement('systemPromptInput');
+            if (userNameInputEl) currentSession.userName = userNameInputEl.value.trim();
+            if (systemPromptInputEl) currentSession.systemPrompt = systemPromptInputEl.value.trim();
+            storage.saveSessions();
+            ui.showSystemMessage("目前聊天設定已儲存。", `system-settings-saved-${Date.now()}`);
+        },
+        activateSession: (sessionId) => {
+            const sessionToActivate = state.sessions.find(s => s.sessionId === sessionId);
+            if (sessionToActivate) {
+                state.activeSessionId = sessionId;
+                storage.saveActiveSessionId(); // Save new active ID first
+                ui.loadSessionUI(sessionId);    // Load content, settings for this session
+                ui.renderSessionList();         // THEN, re-render the list to mark it active
+                ui.closeSidebarIfMobile();
+                const userInputEl = ui.getElement('userInput');
+                if (userInputEl) userInputEl.focus();
+            } else {
+                console.warn(`Session ${sessionId} not found for activation.`);
+                if (state.sessions.length > 0) {
+                    logic.activateSession(state.sessions[0].sessionId);
+                } else {
+                    events.handleNewChat();
+                }
+            }
         }
-        const newSessionId = generateSessionId();
-        const newSession = { sessionId: newSessionId, name: `新聊天 ${new Date().toLocaleTimeString()}`, messages: [], createdAt: Date.now(), lastUpdatedAt: Date.now() };
-        allSessions.unshift(newSession);
-        currentSessionId = newSessionId;
-        if (render) { renderSessionList(); loadSession(newSessionId); saveAllSessions(); }
-        return newSession;
-    }
+    };
 
+    // --- Event Handling Module ---
+    const events = {
+        // ... (All event handlers: handleApiKeyConnection, handleClearApiKey, handleNewChat, etc. remain largely the same structurally)
+        // No direct changes needed in most event handlers for these two specific issues,
+        // as the fixes are in config, API call logic, and activateSession.
+        handleApiKeyConnection: async () => { /* ... as before ... */
+            const apiKeyInputEl = ui.getElement('apiKeyInput'); if (!apiKeyInputEl) return; const key = apiKeyInputEl.value.trim(); if (!key) { ui.updateApiStatus("請輸入 API 金鑰。", "error"); return; }
+            const success = await api.testApiKey(key);
+            if (success) { state.apiKey = key; storage.saveApiKey(); ui.updateChatInputState(true); const btn = ui.getElement('clearApiKeyButton'); if(btn) btn.style.display = 'block'; }
+            else { state.apiKey = null; storage.removeApiKey(); ui.updateChatInputState(false); const btn = ui.getElement('clearApiKeyButton'); if(btn) btn.style.display = 'none';}
+        },
+        handleClearApiKey: () => { logic.clearApiKey(true); },
+        handleNewChat: () => {
+            if (state.currentEditingMessageId && !confirm("您有未儲存的編輯。確定要開始新聊天嗎？")) { return; }
+            if (state.currentEditingMessageId) ui.hideEditUI(document.querySelector(`.message[data-id="${state.currentEditingMessageId}"]`));
+            const now = Date.now();
+            const modelMeta = config.modelsMeta[state.currentModel] || { displayName: state.currentModel };
+            const newSession = {
+                sessionId: logic.generateSessionId(),
+                name: `與 ${modelMeta.displayName} 的新聊天 (${new Date(now).toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit' })})`,
+                userName: ui.getElement('userNameInput')?.value.trim() || '',
+                systemPrompt: ui.getElement('systemPromptInput')?.value.trim() || config.defaultSystemPromptIfEmpty,
+                currentSummary: '', messages: [], createdAt: now, lastUpdatedAt: now, modelUsedOnCreation: state.currentModel
+            };
+            state.sessions.unshift(newSession);
+            storage.saveSessions(); // Save sessions array with new session
+            logic.activateSession(newSession.sessionId); // This will also render the list
+        },
+        handleSessionSelect: (sessionId) => {
+            if (state.currentEditingMessageId && !confirm("您有未儲存的編輯。確定要切換聊天嗎？")) { return; }
+            if (state.currentEditingMessageId) ui.hideEditUI(document.querySelector(`.message[data-id="${state.currentEditingMessageId}"]`));
+            logic.activateSession(sessionId);
+        },
+        handleSessionRename: (sessionId) => { /* ... as before ... */
+            const sessionItem = document.querySelector(`#chat-session-list li[data-session-id="${sessionId}"] .session-name`); if (!sessionItem) return; ui.hideAllRenameButtons();
+            const currentName = state.sessions.find(s => s.sessionId === sessionId)?.name || '';
+            sessionItem.innerHTML = `<input type="text" class="session-rename-input" value="${currentName}" style="width: calc(100% - 10px); font-size: inherit; padding: 2px 5px;">`;
+            const input = sessionItem.querySelector('.session-rename-input'); input.focus(); input.select();
+            const handleRenameConfirm = (e) => {
+                if (e.type === 'blur' || (e.type === 'keypress' && e.key === 'Enter')) {
+                    const newName = input.value.trim();
+                    if (newName && newName !== currentName) { logic.renameSession(sessionId, newName); }
+                    else { ui.renderSessionList(); if (sessionId === state.activeSessionId) { const s = state.sessions.find(s => s.sessionId === sessionId); if (s && ui.getElement('mobileChatTitle')) ui.getElement('mobileChatTitle').textContent = s.name; } }
+                    input.removeEventListener('blur', handleRenameConfirm); input.removeEventListener('keypress', handleRenameConfirm);
+                }
+            };
+            input.addEventListener('blur', handleRenameConfirm); input.addEventListener('keypress', handleRenameConfirm);
+        },
+        handleExportChat: () => { /* ... as before ... */
+            const currentSession = logic.getCurrentSession(); if (!currentSession) return;
+            const exportData = {
+                formatVersion: "AIWebChat_v3", sessionId: currentSession.sessionId, name: currentSession.name,
+                userName: currentSession.userName, systemPrompt: currentSession.systemPrompt, currentSummary: currentSession.currentSummary,
+                modelUsed: currentSession.modelUsedOnCreation || state.currentModel, timestamp: new Date().toISOString(),
+                createdAt: currentSession.createdAt, lastUpdatedAt: currentSession.lastUpdatedAt, history: currentSession.messages
+            };
+            const filename = `AI_Chat_${currentSession.name.replace(/[^a-z0-9]/gi, '_') || currentSession.sessionId.slice(-5)}.json`;
+            const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' }); const url = URL.createObjectURL(blob);
+            const a = document.createElement('a'); a.href = url; a.download = filename; document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
+            ui.showSystemMessage("對話已匯出。", `sys-export-${Date.now()}`);
+        },
+        handleImportClick: () => { const el = ui.getElement('importFileInput'); if (el) el.click(); },
+        handleFileImport: (event) => { /* ... as before ... */
+            const file = event.target.files[0]; if (!file) return; const reader = new FileReader();
+            reader.onload = (e) => {
+                try {
+                    const importedData = JSON.parse(e.target.result);
+                    let sessionToImport = {
+                        sessionId: logic.generateSessionId(), name: importedData.name || `導入 ${file.name.split('.')[0]}`,
+                        userName: importedData.userName || '', systemPrompt: importedData.systemPrompt || config.defaultSystemPromptIfEmpty,
+                        currentSummary: importedData.currentSummary || '', messages: [], createdAt: importedData.createdAt || Date.now(),
+                        lastUpdatedAt: importedData.lastUpdatedAt || Date.now(), modelUsedOnCreation: importedData.modelUsed || importedData.modelUsedOnCreation || state.currentModel
+                    };
+                    if (Array.isArray(importedData.history)) sessionToImport.messages = importedData.history.map(item => ({...item, id: item.id || `imported-${logic.generateMessageId()}`}));
+                    else if (Array.isArray(importedData)) sessionToImport.messages = importedData.map(item => ({...item, id: item.id || `imported-${logic.generateMessageId()}`}));
+                    else throw new Error('無法識別的檔案格式。');
+                    if (sessionToImport.messages.length === 0 && !confirm("匯入的檔案沒有聊天訊息。是否仍要創建一個空的聊天?")) throw new Error('匯入已取消 (無訊息)。');
+                    state.sessions.unshift(sessionToImport); storage.saveSessions(); logic.activateSession(sessionToImport.sessionId);
+                    ui.showSystemMessage(`成功從 ${file.name} 匯入。`, `system-import-${logic.generateMessageId()}`);
+                } catch (error) { console.error("Import error:", error); ui.showSystemMessage(`匯入失敗: ${error.message}`, `error-import-${logic.generateMessageId()}`, true); }
+                finally { if (ui.getElement('importFileInput')) ui.getElement('importFileInput').value = ''; ui.closeSidebarIfMobile(); }
+            };
+            reader.readAsText(file);
+        },
+        handleDeleteCurrentChat: () => { /* ... as before ... */
+            const currentSession = logic.getCurrentSession(); if (!currentSession) { alert("沒有活動的聊天可刪除。"); return; }
+            if (confirm(`確定要刪除聊天 "${currentSession.name}" 嗎？此操作無法復原。`)) { logic.deleteSession(currentSession.sessionId); }
+        },
+        handleThemeToggle: () => { state.currentTheme = state.currentTheme === 'light' ? 'dark' : 'light'; storage.saveTheme(); ui.updateThemeUI(); },
+        handleSendMessage: () => { api.callApi(false); },
+        handleModelChange: async (showMessage = true) => { /* ... as before ... */
+            const modelSelectorEl = ui.getElement('modelSelector'); if (!modelSelectorEl) return; const newModel = modelSelectorEl.value;
+            const oldModelType = config.modelsMeta[state.currentModel]?.type; const newModelType = config.modelsMeta[newModel]?.type;
+            state.currentModel = newModel; storage.saveModel();
+            if (showMessage) { ui.showSystemMessage(`模型已切換至 ${config.modelsMeta[newModel]?.displayName || newModel}。`, `sys-modelchange-${Date.now()}`); }
+            if (state.apiKey && oldModelType !== newModelType) {
+                ui.updateApiStatus(`模型類型已變更，正在用新模型 (${config.modelsMeta[newModel]?.displayName}) 重新測試金鑰...`, "testing");
+                const success = await api.testApiKey(state.apiKey);
+                if (!success) { ui.updateApiStatus(`金鑰對新模型 ${config.modelsMeta[newModel]?.displayName} 無效。請檢查金鑰或模型選擇。`, "error"); state.apiKey = null; storage.removeApiKey(); ui.updateChatInputState(false); }
+                else { ui.updateChatInputState(true); }
+            } else if (!state.apiKey) { ui.updateApiStatus(`請輸入金鑰並連線 (${newModelType || 'API'})`, ""); ui.updateChatInputState(false); }
+            else if (state.apiKey && oldModelType === newModelType) { ui.updateApiStatus(`${config.modelsMeta[newModel]?.displayName || newModel} 金鑰已連線。`, "success"); ui.updateChatInputState(true); }
+        },
+        handleSidebarToggle: (forceOpen = null) => { /* ... as before ... */
+            const body = ui.getElement('body'); if (!body) return;
+            if (forceOpen === true) body.classList.add('sidebar-open'); else if (forceOpen === false) body.classList.remove('sidebar-open'); else body.classList.toggle('sidebar-open');
+        },
+        handleCloseSidebar: () => { events.handleSidebarToggle(false); },
+        handleTextareaInput: (event) => { ui.adjustTextareaHeight(event.target); },
+        handleTextareaKeydown: (event) => { if (event.key === 'Enter' && !event.shiftKey && !state.isLoading) { event.preventDefault(); events.handleSendMessage(); } },
+        handleMessageActions: (event) => { /* ... as before ... */
+            const target = event.target; const messageElement = target.closest('.message[data-id]');
+            if (!messageElement) { if (!target.closest('.message-actions')) { ui.hideAllMessageActions(); } return; }
+            if (messageElement.classList.contains('editing')) return;
+            const currentlyVisibleActions = document.querySelector('.message.actions-visible');
+            if (currentlyVisibleActions && currentlyVisibleActions !== messageElement) { currentlyVisibleActions.classList.remove('actions-visible'); }
+            messageElement.classList.toggle('actions-visible');
+            const messageId = messageElement.dataset.id; const actionButton = target.closest('.action-button');
+            if (actionButton) {
+                const currentSession = logic.getCurrentSession(); if (!currentSession) return; const messageData = currentSession.messages.find(msg => msg.id === messageId); if (!messageData) return;
+                messageElement.classList.remove('actions-visible');
+                if (actionButton.classList.contains('action-copy')) events.handleCopyMessage(messageData.content, actionButton);
+                else if (actionButton.classList.contains('action-edit')) events.handleStartEdit(messageElement, messageData.content);
+                else if (actionButton.classList.contains('action-delete')) events.handleDeleteMessage(messageId, messageElement);
+                else if (actionButton.classList.contains('action-regenerate') && messageData.role === 'assistant') events.handleRegenerateMessage(messageId);
+                event.stopPropagation();
+            }
+        },
+        handleRegenerateMessage: (assistantMessageId) => { if (state.isLoading || state.isSummarizing) return; console.log(`Regenerating response for assistant message ID: ${assistantMessageId}`); api.callApi(true, assistantMessageId); },
+        handleCopyMessage: (content, buttonElement) => { /* ... as before ... */
+            navigator.clipboard.writeText(content).then(() => { const icon = buttonElement.innerHTML; buttonElement.innerHTML = '<i class="fas fa-check"></i>'; setTimeout(() => { buttonElement.innerHTML = icon; }, 1500); })
+            .catch(err => { console.error('Failed to copy: ', err); alert('複製失敗!'); });
+        },
+        handleDeleteMessage: (messageId, messageElement) => { /* ... as before ... */
+            if (confirm("確定要刪除這則訊息嗎？")) { const s = logic.getCurrentSession(); if (s && logic.deleteMessageFromSession(s.sessionId, messageId)) messageElement.remove(); else alert("刪除訊息失敗。"); }
+        },
+        handleStartEdit: (messageElement, rawContent) => { /* ... as before ... */
+            if (state.currentEditingMessageId && state.currentEditingMessageId !== messageElement.dataset.id) events.handleCancelEdit(state.currentEditingMessageId, true);
+            ui.hideAllMessageActions(); messageElement.classList.add('editing'); state.currentEditingMessageId = messageElement.dataset.id;
+            const contentDiv = messageElement.querySelector('.message-content'); contentDiv.style.display = 'none';
+            const editArea = document.createElement('div'); editArea.classList.add('inline-edit-area');
+            editArea.innerHTML = `<textarea class="inline-edit-textarea"></textarea><div class="inline-edit-controls"><button class="save-edit-button"><i class="fas fa-save"></i> 儲存</button><button class="cancel-edit-button"><i class="fas fa-times"></i> 取消</button></div>`;
+            messageElement.appendChild(editArea); const textarea = editArea.querySelector('.inline-edit-textarea'); textarea.value = messageElement.dataset.originalContent || rawContent;
+            ui.adjustTextareaHeightForEdit(textarea); textarea.focus(); textarea.select();
+            editArea.querySelector('.save-edit-button').addEventListener('click', () => events.handleSaveEdit(messageElement.dataset.id, messageElement));
+            editArea.querySelector('.cancel-edit-button').addEventListener('click', () => events.handleCancelEdit(messageElement.dataset.id));
+            textarea.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); events.handleSaveEdit(messageElement.dataset.id, messageElement); } else if (e.key === 'Escape') events.handleCancelEdit(messageElement.dataset.id); });
+            textarea.addEventListener('input', () => ui.adjustTextareaHeightForEdit(textarea));
+        },
+        handleSaveEdit: (messageId, messageElement) => { /* ... as before ... */
+            const textarea = messageElement.querySelector('.inline-edit-textarea'); if (!textarea) return; const newContent = textarea.value; const currentSession = logic.getCurrentSession();
+            if (currentSession && logic.updateMessageInSession(currentSession.sessionId, messageId, newContent)) {
+                const updatedMsg = currentSession.messages.find(m => m.id === messageId); const newMsgElement = ui.renderMessage(updatedMsg);
+                if (newMsgElement) messageElement.replaceWith(newMsgElement);
+            } else alert("儲存編輯失敗。");
+            events.handleCancelEdit(messageId, true);
+        },
+        handleCancelEdit: (messageId, force = false) => { /* ... as before ... */
+            const messageElement = document.querySelector(`.message[data-id="${messageId}"]`); if (!messageElement || !messageElement.classList.contains('editing')) return;
+            const editArea = messageElement.querySelector('.inline-edit-area'); if (editArea) editArea.remove();
+            const contentDiv = messageElement.querySelector('.message-content'); if (contentDiv) contentDiv.style.display = '';
+            messageElement.classList.remove('editing'); if (state.currentEditingMessageId === messageId) state.currentEditingMessageId = null;
+        },
+        handleSessionPressStart: (event) => { /* ... as before ... */ },
+        handleSessionPressEnd: (event) => { clearTimeout(state.longPressTimer); },
+        handleDocumentClickForHideRename: (event) => { /* ... as before ... */
+            const activeRenameInput = document.querySelector('#chat-session-list .session-rename-input'); if (activeRenameInput && !activeRenameInput.contains(event.target)) activeRenameInput.blur();
+            const sessionList = ui.getElement('chatSessionList'); if (sessionList && !sessionList.contains(event.target)) ui.hideAllRenameButtons();
+        },
+        handleSaveSessionSettingsClick: () => { logic.saveCurrentSessionSettings(); ui.closeSidebarIfMobile(); },
+        handleSummarizeChatClick: async () => { /* ... as before ... */
+            const currentSession = logic.getCurrentSession(); if (!currentSession) { alert("沒有活動的聊天可摘要。"); return; }
+            if (confirm("確定要摘要目前對話嗎？這將替換較早的訊息並更新上下文。")) { ui.closeSidebarIfMobile(); await api.summarizeConversation(currentSession); ui.renderMessages(currentSession.messages); }
+        },
+        handleAutoSummarizationCheck: () => { /* ... as before ... */
+            const currentSession = logic.getCurrentSession(); if (!currentSession || state.isSummarizing) return;
+            const messageCount = currentSession.messages.filter(m => ['user', 'assistant'].includes(m.role)).length;
+            if (messageCount >= config.summarizationTriggerThreshold) {
+                const timeSinceLastSummary = currentSession.lastSummaryAt ? Date.now() - currentSession.lastSummaryAt : Infinity;
+                const messagesSinceLastSummary = currentSession.messagesSinceLastSummary || messageCount;
+                if (messagesSinceLastSummary >= (config.summarizationTriggerThreshold / 2) || timeSinceLastSummary > 10 * 60 * 1000) {
+                    if (confirm(`目前對話較長 (${messageCount} 則訊息)，是否需要摘要以優化效能和上下文？`)) {
+                        api.summarizeConversation(currentSession).then((newSummary) => {
+                            if (newSummary) { currentSession.lastSummaryAt = Date.now(); currentSession.messagesSinceLastSummary = 0; ui.renderMessages(currentSession.messages); }
+                        });
+                    }
+                }
+            } else { if (currentSession) currentSession.messagesSinceLastSummary = (currentSession.messagesSinceLastSummary || 0) + 1; }
+        }
+    };
 
-    // --- API 金鑰處理 ---
-    async function loadAndVerifyApiKey() { const storedKey = localStorage.getItem(LOCAL_STORAGE_KEY_API_KEY); if (storedKey) { console.log("Found stored API key. Verifying..."); setApiStatus("正在驗證儲存的金鑰...", "testing"); const isValid = await testApiKey(storedKey); if (isValid) { apiKey = storedKey; apiKeyInput.value = '********'; apiKeyInput.type = 'password'; setApiStatus("金鑰有效，已連線", "success"); enableChat(); clearApiKeyButton.style.display = 'block'; } else { setApiStatus("儲存的金鑰無效或已過期，請重新輸入", "error"); localStorage.removeItem(LOCAL_STORAGE_KEY_API_KEY); apiKeyInput.value = ''; apiKeyInput.type = 'text'; disableChat(); clearApiKeyButton.style.display = 'none'; } } else { setApiStatus("請輸入金鑰並連線", ""); disableChat(); clearApiKeyButton.style.display = 'none'; } }
-    async function handleConnectApiKey() { const inputKey = apiKeyInput.value.trim(); if (!inputKey) { setApiStatus("請輸入 API 金鑰", "error"); return; } setApiStatus("正在測試連線...", "testing"); connectApiButton.disabled = true; const isValid = await testApiKey(inputKey); if (isValid) { apiKey = inputKey; localStorage.setItem(LOCAL_STORAGE_KEY_API_KEY, apiKey); setApiStatus("連線成功！", "success"); enableChat(); clearApiKeyButton.style.display = 'block'; apiKeyInput.value = '********'; apiKeyInput.type = 'password'; closeSidebarIfMobile(); } else { apiKey = null; localStorage.removeItem(LOCAL_STORAGE_KEY_API_KEY); disableChat(); clearApiKeyButton.style.display = 'none'; } connectApiButton.disabled = false; }
-    async function testApiKey(keyToTest) { try { const response = await fetch(API_URL_MODELS, { method: 'GET', headers: { 'Authorization': `Bearer ${keyToTest}` } }); if (response.ok) { console.log("API Key validation successful."); return true; } else { let errorMsg = `連線失敗 (${response.status})`; try { const errorData = await response.json(); errorMsg += `: ${errorData.error || JSON.stringify(errorData)}`; } catch(e) { errorMsg += `: ${response.statusText}`; } setApiStatus(errorMsg, "error"); console.error("API Key validation failed:", errorMsg); return false; } } catch (error) { setApiStatus(`網路錯誤或無法連線`, "error"); console.error("Error testing API key:", error); return false; } }
-    function handleClearApiKey() { if (confirm("確定要清除已儲存的 API 金鑰嗎？")) { apiKey = null; localStorage.removeItem(LOCAL_STORAGE_KEY_API_KEY); apiKeyInput.value = ''; apiKeyInput.type = 'text'; setApiStatus("金鑰已清除，請重新輸入並連線", ""); disableChat(); clearApiKeyButton.style.display = 'none'; console.log("API Key cleared."); closeSidebarIfMobile(); } }
-    function setApiStatus(message, type = "") { apiStatus.textContent = message; apiStatus.className = `api-status-message status-${type}`; }
-    function enableChat() { userInput.disabled = false; sendButton.disabled = false; userInput.classList.remove('chat-disabled'); sendButton.classList.remove('chat-disabled'); userInput.placeholder = "輸入訊息... (Enter 換行)"; }
-    function disableChat() { userInput.disabled = true; sendButton.disabled = true; userInput.classList.add('chat-disabled'); sendButton.classList.add('chat-disabled'); userInput.placeholder = "請先連線 API..."; }
-
-    // --- 主題切換 ---
-    function toggleTheme() { body.classList.toggle('dark-mode'); const isDarkMode = body.classList.contains('dark-mode'); localStorage.setItem(LOCAL_STORAGE_KEY_THEME, isDarkMode ? 'dark' : 'light'); const icon = themeToggleButton.querySelector('i'); icon.className = isDarkMode ? 'fas fa-moon' : 'fas fa-sun'; }
-    function loadTheme() { const savedTheme = localStorage.getItem(LOCAL_STORAGE_KEY_THEME); if (savedTheme === 'dark') { body.classList.add('dark-mode'); themeToggleButton.querySelector('i').className = 'fas fa-moon'; } else { body.classList.remove('dark-mode'); themeToggleButton.querySelector('i').className = 'fas fa-sun'; } }
-    // --- 模型選擇 ---
-    function setupModelSelector() { const savedModel = localStorage.getItem(LOCAL_STORAGE_KEY_MODEL); if (savedModel) { const exists = Array.from(modelSelector.options).some(option => option.value === savedModel); if (exists) { modelSelector.value = savedModel; } } currentModel = modelSelector.value; modelSelector.addEventListener('change', () => { currentModel = modelSelector.value; localStorage.setItem(LOCAL_STORAGE_KEY_MODEL, currentModel); displayMessage('system', `模型已切換至: ${currentModel}`, `system-${generateMessageId()}`); closeSidebarIfMobile(); }); }
-    // --- 側邊欄控制 ---
-    function openSidebar() { body.classList.add('sidebar-open'); } function closeSidebar() { body.classList.remove('sidebar-open'); } function toggleSidebar() { body.classList.toggle('sidebar-open'); } function closeSidebarIfMobile() { if (window.innerWidth <= 768 && body.classList.contains('sidebar-open')) { closeSidebar(); } }
-    // --- 核心功能函數 ---
-    function displayMessage(role, content, id, isError = false) { const messageDiv = document.createElement('div'); messageDiv.classList.add('message'); if (id) messageDiv.dataset.id = id; const contentContainer = document.createElement('div'); contentContainer.classList.add('message-content'); switch (role) { case 'user': messageDiv.classList.add('user-message'); contentContainer.textContent = content; break; case 'assistant': messageDiv.classList.add('assistant-message'); try { const rawHtml = marked.parse(content, { gfm: true, breaks: true }); const cleanHtml = DOMPurify.sanitize(rawHtml, { USE_PROFILES: { html: true } }); contentContainer.innerHTML = cleanHtml; } catch (e) { console.error("Error processing assistant message:", e); contentContainer.textContent = content; messageDiv.style.border = '1px dashed red'; } break; case 'system': messageDiv.classList.add('system-message'); if (isError) { messageDiv.classList.add('error-message'); messageDiv.textContent = `錯誤：${content}`; } else { messageDiv.textContent = content; } chatMessages.appendChild(messageDiv); scrollToBottom(); return messageDiv; case 'loading': messageDiv.classList.add('loading-message'); messageDiv.innerHTML = '<i class="fas fa-spinner fa-spin"></i> AI 思考中...'; messageDiv.id = id || 'loading-indicator'; chatMessages.appendChild(messageDiv); scrollToBottom(); return messageDiv; default: messageDiv.classList.add('system-message'); messageDiv.textContent = content; chatMessages.appendChild(messageDiv); scrollToBottom(); return messageDiv; } messageDiv.appendChild(contentContainer); if (id && (role === 'user' || role === 'assistant')) { const actionsContainer = document.createElement('div'); actionsContainer.classList.add('message-actions'); actionsContainer.innerHTML = `<button class="action-copy" title="複製"><i class="fas fa-copy"></i></button><button class="action-edit" title="編輯"><i class="fas fa-pencil-alt"></i></button><button class="action-delete" title="刪除"><i class="fas fa-trash-alt"></i></button>`; messageDiv.appendChild(actionsContainer); } chatMessages.appendChild(messageDiv); scrollToBottom(); return messageDiv; }
-    function scrollToBottom() { requestAnimationFrame(() => { chatMessages.scrollTo({ top: chatMessages.scrollHeight, behavior: 'smooth' }); }); }
-    async function callGrokApi() { const userText = userInput.value.trim(); if (!userText || isLoading) return; if (!apiKey) { displayMessage('system', '請先在側邊欄連線 API 金鑰。', `error-${generateMessageId()}`, true); openSidebar(); return; } if (!currentSessionId) { displayMessage('system', '沒有活動的聊天會話，請先新增聊天。', `error-${generateMessageId()}`, true); return; } isLoading = true; sendButton.disabled = true; userInput.disabled = true; const userMessageId = generateMessageId(); const userMessage = { role: 'user', content: userText, id: userMessageId, timestamp: Date.now() }; const currentSession = findSessionById(currentSessionId); if (!currentSession) { console.error("Current session not found!"); isLoading = false; sendButton.disabled = false; userInput.disabled = false; return; } currentSession.messages.push(userMessage); saveAllSessions(); displayMessage('user', userText, userMessageId); userInput.value = ''; adjustTextareaHeight(); const loadingId = `loading-${userMessageId}`; const loadingIndicator = displayMessage('loading', '', loadingId ); try { const messagesToSend = currentSession.messages.map(({ role, content }) => ({ role, content })); const requestBody = { messages: messagesToSend, model: currentModel, stream: false, temperature: 0.7 }; const response = await fetch(API_URL_CHAT, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` }, body: JSON.stringify(requestBody) }); const currentLoading = document.getElementById(loadingId); if (currentLoading) chatMessages.removeChild(currentLoading); if (!response.ok) { let errorText = await response.text(); let errorMessage = `API 請求失敗 (${response.status} ${response.statusText})`; try { const errorJson = JSON.parse(errorText); if (errorJson.error && typeof errorJson.error === 'string') { errorMessage += `: ${errorJson.error}`; } else if (errorJson.error && errorJson.error.message) { errorMessage += `: ${errorJson.error.message}`; } else if (errorJson.detail) { errorMessage += `: ${JSON.stringify(errorJson.detail)}`; } else { errorMessage += `\n原始回應: ${errorText}`; } } catch (e) { errorMessage += `\n原始回應: ${errorText}`; } if (response.status === 401 || response.status === 403) { errorMessage += " 金鑰可能已失效，請嘗試重新連線。"; apiKey = null; localStorage.removeItem(LOCAL_STORAGE_KEY_API_KEY); disableChat(); setApiStatus("金鑰驗證失敗，請重新連線", "error"); clearApiKeyButton.style.display = 'none'; } console.error('API Error:', errorMessage); displayMessage('system', errorMessage, `error-${generateMessageId()}`, true); } else { const data = await response.json(); if (data.choices && data.choices.length > 0 && data.choices[0].message && data.choices[0].message.content) { const assistantReply = data.choices[0].message.content.trim(); const assistantMessageId = generateMessageId(); const assistantMessage = { role: 'assistant', content: assistantReply, id: assistantMessageId, timestamp: Date.now() }; currentSession.messages.push(assistantMessage); saveAllSessions(); displayMessage('assistant', assistantReply, assistantMessageId); } else { console.error('Invalid API response structure:', data); displayMessage('system', '收到無效的 API 回應格式。', `error-${generateMessageId()}`, true); } } } catch (error) { console.error('Error calling Grok API:', error); const currentLoading = document.getElementById(loadingId); if (currentLoading) chatMessages.removeChild(currentLoading); if (!error.message.includes('API 請求失敗')) { displayMessage('system', `客戶端錯誤: ${error.message}`, `error-${generateMessageId()}`, true); } } finally { isLoading = false; if (apiKey) { sendButton.disabled = false; userInput.disabled = false; userInput.focus(); } } }
-    // --- 匯出/匯入/清除 功能 ---
-    function exportChat() { const currentSession = findSessionById(currentSessionId); if (!currentSession || currentSession.messages.length === 0) { alert('目前聊天沒有內容可匯出。'); return; } try { const exportData = { sessionId: currentSession.sessionId, name: currentSession.name, modelUsed: currentModel, timestamp: new Date().toISOString(), history: currentSession.messages }; const jsonString = JSON.stringify(exportData, null, 2); const blob = new Blob([jsonString], { type: 'application/json' }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; const timestamp = new Date().toISOString().replace(/[:.]/g, '-'); a.download = `grok-chat-${currentSession.name || currentSession.sessionId.slice(-4)}-${timestamp}.json`; document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url); closeSidebarIfMobile(); } catch (error) { console.error('Error exporting chat:', error); displayMessage('system', `匯出對話失敗: ${error.message}`, `error-${generateMessageId()}`, true); } }
-    function importChat() { importFileInput.click(); }
-    function handleFileImport(event) { const file = event.target.files[0]; if (!file) return; const reader = new FileReader(); reader.onload = (e) => { try { const importedData = JSON.parse(e.target.result); let historyToLoad = []; let sessionName = `導入的聊天 ${new Date().toLocaleTimeString()}`; let importedModel = null; if (Array.isArray(importedData) && importedData.every(item => typeof item === 'object' && item.role && typeof item.content !== 'undefined')) { historyToLoad = importedData.map((item, index) => ({...item, id: item.id || `imported-${index}`})); } else if (typeof importedData === 'object' && Array.isArray(importedData.history)) { historyToLoad = importedData.history.map((item, index) => ({...item, id: item.id || `imported-${index}`})); sessionName = importedData.name || sessionName; importedModel = importedData.modelUsed; } else { throw new Error('無法識別的檔案格式。'); } if (historyToLoad.length === 0) { throw new Error('匯入的檔案沒有有效的聊天訊息。'); } const newSessionId = generateSessionId(); const newSession = { sessionId: newSessionId, name: sessionName, messages: historyToLoad, createdAt: importedData.timestamp ? new Date(importedData.timestamp).getTime() : Date.now(), lastUpdatedAt: Date.now() }; allSessions.unshift(newSession); if (importedModel) { const exists = Array.from(modelSelector.options).some(option => option.value === importedModel); if (exists) { modelSelector.value = importedModel; currentModel = importedModel; localStorage.setItem(LOCAL_STORAGE_KEY_MODEL, currentModel); console.log(`模型已根據匯入文件設為: ${currentModel}`); } } renderSessionList(); loadSession(newSessionId); saveAllSessions(); displayMessage('system', `成功從 ${file.name} 匯入為新聊天。`, `system-${generateMessageId()}`); } catch (error) { console.error('Error importing chat:', error); displayMessage('system', `匯入檔案失敗: ${error.message}`, `error-${generateMessageId()}`, true); } finally { importFileInput.value = ''; closeSidebarIfMobile(); } }; reader.onerror = (e) => { console.error('Error reading file:', e); displayMessage('system', '讀取檔案時發生錯誤。',`error-${generateMessageId()}` ,true); importFileInput.value = ''; }; reader.readAsText(file); }
-    function handleDeleteCurrentChat() { if (!currentSessionId || allSessions.length <= 1) { alert("無法刪除最後一個聊天會話。"); return; } const currentSession = findSessionById(currentSessionId); if (currentSession && confirm(`確定要刪除聊天 "${currentSession.name || '此聊天'}" 嗎？此操作無法復原。`)) { const sessionIndex = allSessions.findIndex(s => s.sessionId === currentSessionId); if (sessionIndex > -1) { allSessions.splice(sessionIndex, 1); const nextSessionIndex = sessionIndex > 0 ? sessionIndex - 1 : 0; const nextSessionId = allSessions[nextSessionIndex]?.sessionId; renderSessionList(); if (nextSessionId) { loadSession(nextSessionId); } else { handleNewChat(); } saveAllSessions(); console.log(`Session ${currentSessionId} deleted.`); } } closeSidebarIfMobile(); }
-    // --- 訊息操作處理 ---
-    function handleMessageActions(event) { const target = event.target; const actionButton = target.closest('.message-actions button'); const editControlsButton = target.closest('.message-edit-controls button'); const messageElement = target.closest('.message[data-id]'); if (currentEditingMessageId && !target.closest(`[data-id="${currentEditingMessageId}"] .message-edit-area`) && !target.closest(`[data-id="${currentEditingMessageId}"] .message-edit-controls`)) { cancelEdit(currentEditingMessageId); } if (messageElement && !actionButton && !editControlsButton && !messageElement.classList.contains('editing') && !target.closest('.message-edit-area')) { const currentlyVisible = document.querySelector('.message.actions-visible'); if (currentlyVisible && currentlyVisible !== messageElement) { currentlyVisible.classList.remove('actions-visible'); } if (currentEditingMessageId !== messageElement.dataset.id) { messageElement.classList.toggle('actions-visible'); } event.stopPropagation(); return; } if (actionButton && messageElement && !messageElement.classList.contains('editing')) { const messageId = messageElement.dataset.id; const messageData = findMessageById(currentSessionId, messageId); if (!messageData) return; if (actionButton.classList.contains('action-copy')) { if (messageData.content) { navigator.clipboard.writeText(messageData.content).then(() => { const originalIcon = actionButton.innerHTML; actionButton.innerHTML = '<i class="fas fa-check"></i>'; setTimeout(() => { actionButton.innerHTML = originalIcon; }, 1000); }).catch(err => { console.error('無法複製訊息:', err); alert('複製失敗！'); }); } } else if (actionButton.classList.contains('action-delete')) { if (confirm('確定要刪除此訊息嗎？')) { const messageIndex = findMessageIndexById(currentSessionId, messageId); const session = findSessionById(currentSessionId); if (session && messageIndex > -1) { session.messages.splice(messageIndex, 1); saveAllSessions(); messageElement.remove(); console.log(`Message ${messageId} deleted.`); } } } else if (actionButton.classList.contains('action-edit')) { startEdit(messageElement, messageData); } hideAllMessageActions(); event.stopPropagation(); return; } if (editControlsButton && messageElement && messageElement.classList.contains('editing')) { const messageId = messageElement.dataset.id; if (editControlsButton.classList.contains('save-edit-button')) { saveEdit(messageId, messageElement); } else if (editControlsButton.classList.contains('cancel-edit-button')) { cancelEdit(messageId); } event.stopPropagation(); return; } if (!target.closest('.message') && !target.closest('.sidebar') && !target.closest('.mobile-header') && !currentEditingMessageId) { hideAllMessageActions(); } }
-    function hideAllMessageActions() { document.querySelectorAll('.message.actions-visible').forEach(el => { if (!el.classList.contains('editing')) { el.classList.remove('actions-visible'); } }); }
-    // --- 編輯相關函數 ---
-    function startEdit(messageElement, messageData) { if (currentEditingMessageId && currentEditingMessageId !== messageData.id) { cancelEdit(currentEditingMessageId); } currentEditingMessageId = messageData.id; messageElement.classList.add('editing'); hideAllMessageActions(); const contentContainer = messageElement.querySelector('.message-content'); if (!contentContainer) return; const editAreaDiv = document.createElement('div'); editAreaDiv.classList.add('message-edit-area'); const textarea = document.createElement('textarea'); textarea.value = messageData.content; textarea.rows = Math.min(10, Math.max(3, messageData.content.split('\n').length)); const controlsDiv = document.createElement('div'); controlsDiv.classList.add('message-edit-controls'); controlsDiv.innerHTML = `<button class="cancel-edit-button">取消</button><button class="save-edit-button">保存</button>`; editAreaDiv.appendChild(textarea); editAreaDiv.appendChild(controlsDiv); messageElement.appendChild(editAreaDiv); textarea.focus(); textarea.select(); }
-    function saveEdit(messageId, messageElement) { const editArea = messageElement.querySelector('.message-edit-area'); const textarea = editArea?.querySelector('textarea'); if (!textarea || !messageId) return; const newContent = textarea.value.trim(); const session = findSessionById(currentSessionId); const messageIndex = findMessageIndexById(currentSessionId, messageId); if (session && messageIndex > -1 && newContent) { const oldMessageData = session.messages[messageIndex]; session.messages[messageIndex] = { ...oldMessageData, content: newContent }; saveAllSessions(); const contentContainer = messageElement.querySelector('.message-content'); if (contentContainer) { if (oldMessageData.role === 'user') { contentContainer.textContent = newContent; } else if (oldMessageData.role === 'assistant') { try { const rawHtml = marked.parse(newContent, { gfm: true, breaks: true }); const cleanHtml = DOMPurify.sanitize(rawHtml, { USE_PROFILES: { html: true } }); contentContainer.innerHTML = cleanHtml; } catch (e) { console.error("Error re-rendering edited message:", e); contentContainer.textContent = newContent; } } } editArea.remove(); messageElement.classList.remove('editing'); currentEditingMessageId = null; console.log(`Message ${messageId} updated.`); } else if (!newContent) { alert("訊息內容不能為空！"); } }
-    function cancelEdit(messageId) { const messageElement = document.querySelector(`.message[data-id="${messageId}"]`); if (messageElement) { const editArea = messageElement.querySelector('.message-edit-area'); if (editArea) editArea.remove(); messageElement.classList.remove('editing'); } if (currentEditingMessageId === messageId) { currentEditingMessageId = null; } }
-    // --- 動態調整 Textarea 高度 ---
-    function adjustTextareaHeight() { const maxHeight = 120; userInput.style.height = 'auto'; const newHeight = Math.min(userInput.scrollHeight, maxHeight); userInput.style.height = `${newHeight}px`; }
-    // --- 事件監聽器綁定 ---
+    // --- App Initialization ---
     function setupEventListeners() {
-        sendButton.addEventListener('click', callGrokApi);
-        userInput.addEventListener('input', adjustTextareaHeight);
-        themeToggleButton.addEventListener('click', () => { toggleTheme(); closeSidebarIfMobile(); });
-        exportButton.addEventListener('click', exportChat);
-        importButton.addEventListener('click', importChat);
-        importFileInput.addEventListener('change', handleFileImport);
-        // clearButton.addEventListener('click', clearChat); // 舊按鈕移除
-        deleteCurrentChatButton.addEventListener('click', handleDeleteCurrentChat); // 新按鈕
-        menuToggleButton.addEventListener('click', toggleSidebar);
-        sidebarOverlay.addEventListener('click', closeSidebar);
-        closeSidebarButton.addEventListener('click', closeSidebar);
-        connectApiButton.addEventListener('click', handleConnectApiKey);
-        clearApiKeyButton.addEventListener('click', handleClearApiKey);
-        newChatButton.addEventListener('click', () => { handleNewChat(); closeSidebarIfMobile(); }); // 新增聊天按鈕
-        document.addEventListener('click', handleMessageActions, true);
-        console.log("Event listeners attached.");
+        // API Section
+        const connectApiButton = ui.getElement('connectApiButton'); if (connectApiButton) connectApiButton.addEventListener('click', events.handleApiKeyConnection);
+        const clearApiKeyButton = ui.getElement('clearApiKeyButton'); if (clearApiKeyButton) clearApiKeyButton.addEventListener('click', events.handleClearApiKey);
+        const apiKeyInput = ui.getElement('apiKeyInput'); if (apiKeyInput) apiKeyInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') events.handleApiKeyConnection(); });
+        // Session Settings
+        const saveSessionSettingsButton = ui.getElement('saveSessionSettingsButton'); if (saveSessionSettingsButton) saveSessionSettingsButton.addEventListener('click', events.handleSaveSessionSettingsClick);
+        // Chat Session List
+        const newChatButton = ui.getElement('newChatButton'); if (newChatButton) newChatButton.addEventListener('click', events.handleNewChat);
+        const chatSessionList = ui.getElement('chatSessionList');
+        if (chatSessionList) {
+            chatSessionList.addEventListener('click', (event) => {
+                const target = event.target; const sessionItem = target.closest('li[data-session-id]'); const renameButton = target.closest('.session-rename-button');
+                if (renameButton && sessionItem) { event.stopPropagation(); events.handleSessionRename(sessionItem.dataset.sessionId); }
+                else if (sessionItem && !target.closest('.session-rename-input')) { events.handleSessionSelect(sessionItem.dataset.sessionId); }
+            });
+        }
+        document.addEventListener('click', events.handleDocumentClickForHideRename);
+        // Model Selector
+        const modelSelector = ui.getElement('modelSelector'); if (modelSelector) modelSelector.addEventListener('change', () => events.handleModelChange(true));
+        // Action Buttons
+        const summarizeChatButton = ui.getElement('summarizeChatButton'); if (summarizeChatButton) summarizeChatButton.addEventListener('click', events.handleSummarizeChatClick);
+        const exportButton = ui.getElement('exportButton'); if (exportButton) exportButton.addEventListener('click', events.handleExportChat);
+        const importButton = ui.getElement('importButton'); if (importButton) importButton.addEventListener('click', events.handleImportClick);
+        const importFileInput = ui.getElement('importFileInput'); if (importFileInput) importFileInput.addEventListener('change', events.handleFileImport);
+        const deleteCurrentChatButton = ui.getElement('deleteCurrentChatButton'); if (deleteCurrentChatButton) deleteCurrentChatButton.addEventListener('click', events.handleDeleteCurrentChat);
+        // Theme Toggle
+        const themeToggleButton = ui.getElement('themeToggleButton'); if (themeToggleButton) themeToggleButton.addEventListener('click', events.handleThemeToggle);
+        // Sidebar Mobile Controls
+        const menuToggleButton = ui.getElement('menuToggleButton'); if (menuToggleButton) menuToggleButton.addEventListener('click', () => events.handleSidebarToggle());
+        const sidebarOverlay = ui.getElement('sidebarOverlay'); if (sidebarOverlay) sidebarOverlay.addEventListener('click', () => events.handleSidebarToggle(false));
+        const closeSidebarButton = ui.getElement('closeSidebarButton'); if (closeSidebarButton) closeSidebarButton.addEventListener('click', () => events.handleSidebarToggle(false));
+        // Main Chat Area
+        const chatMessages = ui.getElement('chatMessages'); if (chatMessages) chatMessages.addEventListener('click', events.handleMessageActions);
+        const userInput = ui.getElement('userInput');
+        if (userInput) { userInput.addEventListener('input', events.handleTextareaInput); userInput.addEventListener('keydown', events.handleTextareaKeydown); }
+        const sendButton = ui.getElement('sendButton'); if (sendButton) sendButton.addEventListener('click', events.handleSendMessage);
     }
 
-    // --- 執行初始化 ---
-    initializeChat();
+    function initializeChat() {
+        console.log("Initializing Enhanced AI Chat...");
+        state.currentTheme = storage.loadTheme();
+        state.apiKey = storage.loadApiKey();
+        state.currentModel = storage.loadModel();
 
-}); // <-- 確保這個結尾的 }); 存在！
+        ui.populateModelSelector();
+        const modelSelectorEl = ui.getElement('modelSelector');
+        if (modelSelectorEl) modelSelectorEl.value = state.currentModel;
+
+        const sessionsLoaded = storage.loadSessions();
+        if (!sessionsLoaded || state.sessions.length === 0) {
+            events.handleNewChat(); // Creates a session, then activateSession handles UI load & list render
+        } else {
+            let lastActiveId = storage.loadActiveSessionId();
+            if (!lastActiveId || !state.sessions.some(s => s.sessionId === lastActiveId)) {
+                lastActiveId = state.sessions[0]?.sessionId;
+            }
+            if (lastActiveId) {
+                logic.activateSession(lastActiveId); // Handles UI load & list render
+            } else {
+                events.handleNewChat(); // Fallback, handles UI load & list render
+            }
+        }
+        ui.updateThemeUI();
+
+        const currentModelMeta = config.modelsMeta[state.currentModel] || { type: '未知', displayName: state.currentModel };
+        if (state.apiKey) {
+            const apiKeyInputEl = ui.getElement('apiKeyInput');
+            if (apiKeyInputEl) apiKeyInputEl.value = state.apiKey;
+            ui.updateApiStatus(`金鑰已載入 (${currentModelMeta.displayName})。點擊連線以測試。`, "loaded");
+            ui.updateChatInputState(true);
+        } else {
+             ui.updateApiStatus("請輸入金鑰並連線 (" + (currentModelMeta.displayName || 'API') + ")", "");
+             ui.updateChatInputState(false);
+        }
+        ui.adjustTextareaHeight();
+        setupEventListeners();
+        console.log("Enhanced AI Chat initialization complete.");
+    }
+
+    initializeChat();
+});
